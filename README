@@ -1,0 +1,15 @@
+Libraries to Load:
+tidyverse
+lubridate
+caret
+randomForest
+
+Cleanup to do:
+Separate out Month and Season
+Turn Age into Continous Var
+Split Neutered vs. Intact
+See how Breed can be aggregated or split
+
+Models to test:
+Logistic Regression w/ forwards & backwards addition, including interaction fx
+Decision Tree + Random Forest
