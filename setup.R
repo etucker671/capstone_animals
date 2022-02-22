@@ -1,8 +1,7 @@
-#Function that takes in a list of package names, check for their installation,
-#and installs them if they're not there. 
-#Libraries loaded for all packages.
+#define project libraries
 package.names <- c("tidyverse","lubridate","randomForest","caret")
 
+#define check function
 package.check <- function(package.names){
   for(i in 1:length(package.names)){
     if(package.names[i] %in% installed.packages()){
@@ -18,4 +17,8 @@ package.check <- function(package.names){
   cat("All requested libraries have been loaded.\n")
 }
 
+#run check function on libraries
 package.check(package.names)
+
+#extract data from train.csv
+data <- read.csv("train.csv", header = TRUE)
