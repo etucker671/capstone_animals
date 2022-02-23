@@ -60,13 +60,25 @@ chisq.test(data$Sex,data$Euthanized)
 chisq.test(pull(filter(data,Sex!="Unknown"),Sex),pull(filter(data,Sex!="Unknown"),Euthanized))
 
 
+##### MONTH AND SEASON EFFECTS #####
 
+#euthanization rates by month
+data %>% group_by(Month) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
 
+#adoption and euthanization counts by month
+data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia"))
 
+#plotted adoptions by month
+data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% ggplot(aes(x = Month, y = Adoptions)) + geom_point() + geom_line(aes(group=1), col = "blue")
 
+#plotted euthanizations by month
+data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% ggplot(aes(x = Month, y = Euthanizations)) + geom_point() + geom_line(aes(group=1), col = "red")
 
-
-
+#plotted as deviations from average
+AveAdoptionsPerMonth <- data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% pull(Adoptions) %>% mean()
+AveEuthanizationsPerMonth <- data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% pull(Euthanizations) %>% mean()
+data %>% group_by(Month) %>% summarize(Adoptions = (sum(OutcomeType == "Adoption")-AveAdoptionsPerMonth)/AveAdoptionsPerMonth, Euthanizations = (sum(OutcomeType == "Euthanasia")-AveEuthanizationsPerMonth)/AveEuthanizationsPerMonth) %>% gather(.,key = "Outcome", value = Deviation, 2:3) %>% as.data.frame() %>% ggplot(aes(x = Month, y = Deviation, col = Outcome)) + geom_point() + geom_line(aes(group=Outcome))
+rm(AveAdoptionsPerMonth,AveEuthanizationsPerMonth)
 
 
 
