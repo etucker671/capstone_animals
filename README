@@ -5,10 +5,11 @@ caret
 randomForest
 
 Cleanup to do:
+Turn Age into Continous Var - DONE
+Split Neutered vs. Intact - DONE
 Separate out Month and Season
-Turn Age into Continous Var
-Split Neutered vs. Intact
 See how Breed can be aggregated or split
+See how Color can be aggergated or split
 
 Models to test:
 Logistic Regression w/ forwards & backwards addition, including interaction fx
