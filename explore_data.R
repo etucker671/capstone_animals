@@ -65,6 +65,9 @@ chisq.test(pull(filter(data,Sex!="Unknown"),Sex),pull(filter(data,Sex!="Unknown"
 #euthanization rates by month
 data %>% group_by(Month) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
 
+#plotted
+data %>% group_by(Month) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% ggplot(aes(x = Month, y = euth_prop)) + geom_point() + geom_line(aes(group=1), col = "red") + ylab("Proportion of Animals Euthanized")
+
 #adoption and euthanization counts by month
 data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia"))
 
@@ -75,11 +78,31 @@ data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"
 data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% ggplot(aes(x = Month, y = Euthanizations)) + geom_point() + geom_line(aes(group=1), col = "red")
 
 #plotted as deviations from average
-AveAdoptionsPerMonth <- data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% pull(Adoptions) %>% mean()
-AveEuthanizationsPerMonth <- data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% pull(Euthanizations) %>% mean()
-data %>% group_by(Month) %>% summarize(Adoptions = (sum(OutcomeType == "Adoption")-AveAdoptionsPerMonth)/AveAdoptionsPerMonth, Euthanizations = (sum(OutcomeType == "Euthanasia")-AveEuthanizationsPerMonth)/AveEuthanizationsPerMonth) %>% gather(.,key = "Outcome", value = Deviation, 2:3) %>% as.data.frame() %>% ggplot(aes(x = Month, y = Deviation, col = Outcome)) + geom_point() + geom_line(aes(group=Outcome))
+AveAdoptionsPerMonth <- data %>% group_by(Month) %>% 
+  summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% 
+  pull(Adoptions) %>% mean()
+
+AveEuthanizationsPerMonth <- data %>% group_by(Month) %>% 
+  summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% 
+  pull(Euthanizations) %>% mean()
+
+data %>% group_by(Month) %>% 
+  summarize(Adoptions = (sum(OutcomeType == "Adoption")-AveAdoptionsPerMonth)/AveAdoptionsPerMonth, 
+            Euthanizations = (sum(OutcomeType == "Euthanasia")-AveEuthanizationsPerMonth)/AveEuthanizationsPerMonth) %>% 
+  gather(.,key = "Outcome", value = Deviation, 2:3) %>% as.data.frame() %>% 
+  ggplot(aes(x = Month, y = Deviation, col = Outcome)) + geom_point() + 
+  geom_line(aes(group=Outcome)) + scale_color_manual(values=c("blue","red"))
+
 rm(AveAdoptionsPerMonth,AveEuthanizationsPerMonth)
 
+#euthanization rates by season
+data %>% group_by(Season) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
 
+#plotted
+data %>% group_by(Season) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% ggplot(aes(x = Season, y = euth_prop)) + geom_point() + geom_line(aes(group=1), col = "red") + ylab("Proportion of Animals Euthanized")
 
+#age of euthanized animals during seasons
+data %>% filter(Euthanized == TRUE, is.na(AgeInYears)==FALSE) %>% group_by(Season) %>% summarize(n = n(), mean_age = mean(AgeInYears), med_age = median(AgeInYears))
 
+#age of euthanized animals during months
+data %>% filter(Euthanized == TRUE, is.na(AgeInYears)==FALSE) %>% group_by(Month) %>% summarize(n = n(), mean_age = mean(AgeInYears), med_age = median(AgeInYears))
