@@ -1,11 +1,3 @@
-##### BREED EFFECTS #####
-
-#100 most common breeds
-data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-n) %>% print(n=100)
-
-#100 most commonly euthanized breeds, filtered by n >= 10
-data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% print(n=100)
-
 
 ##### AGE EFFECTS #####
 
@@ -106,3 +98,22 @@ data %>% filter(Euthanized == TRUE, is.na(AgeInYears)==FALSE) %>% group_by(Seaso
 
 #age of euthanized animals during months
 data %>% filter(Euthanized == TRUE, is.na(AgeInYears)==FALSE) %>% group_by(Month) %>% summarize(n = n(), mean_age = mean(AgeInYears), med_age = median(AgeInYears))
+
+
+##### BREED EFFECTS #####
+
+#100 most common breeds
+data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-n) %>% print(n=100)
+
+#100 most commonly euthanized breeds, filtered by n >= 10
+data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% print(n=100)
+
+
+##### COLOR EFFECTS #####
+
+#100 most common colors
+data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-n) %>% print(n=100)
+
+#100 most commonly euthanized breeds, filtered by n >= 10
+data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% print(n=nrow(.))
+
