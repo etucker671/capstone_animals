@@ -131,7 +131,11 @@ rm(bottom60breeds)
 #BUT REALLY every breed on this list was never euthanized,
 #some even containing 50+ observations
 
-#try "Danger Breed" vs. "Safe Breed"
+#try "Danger Breed" vs. "Safe Breed" - see R script
+#after running, confirm significance:
+data %>% group_by(BreedStatus) %>% summarize(euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
+chisq.test(data$BreedStatus,data$Euthanized)
+#highly significant
 
 #proportions of mixed breeds vs. pure breds euthanized
 data %>% mutate(Mix = str_detect(Breed,"/|Mix")) %>% group_by(Mix) %>% summarize(euth_prop = mean(Euthanized == TRUE))
