@@ -1,4 +1,3 @@
-
 ##### AGE EFFECTS #####
 
 #age distributions of each outcome
@@ -99,6 +98,8 @@ data %>% filter(Euthanized == TRUE, is.na(AgeInYears)==FALSE) %>% group_by(Seaso
 #age of euthanized animals during months
 data %>% filter(Euthanized == TRUE, is.na(AgeInYears)==FALSE) %>% group_by(Month) %>% summarize(n = n(), mean_age = mean(AgeInYears), med_age = median(AgeInYears))
 
+#try binary variable "danger range" = March, April, May, June
+
 
 ##### BREED EFFECTS #####
 
@@ -108,12 +109,53 @@ data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == T
 #100 most commonly euthanized breeds, filtered by n >= 10
 data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% print(n=100)
 
+#top 30 most commonly euthanized breeds, with breeds separated
+data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
+#single breeds counted in this group
+top30breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
+c(as.vector(top30breeds$`1`),as.vector(top30breeds$`2`),as.vector(top30breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(top30breeds)
+#most common are Labrador Retriever (6), Pit Bull (6), Boxer (3),
+#Chow Chow (3), Chihuahua Shorthair (2), German Shepherd (2), Rottweiler (2)
+
+#60 least commonly euthanized breeds, with breeds separated
+data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
+#single breeds counted in this group
+bottom60breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
+c(as.vector(bottom60breeds$`1`),as.vector(bottom60breeds$`2`),as.vector(bottom60breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(bottom60breeds)
+#most common are Chihuahua Shorthair (11), Labrador Retriever (11), Miniature Poodle (4),
+#Australian Shepherd (2), Beagle (2), Cardigan Welsh Corgi (2), Cathoula (2),
+#Jack Russell Terrier (2), Miniature Pinscher (2), Miniature Schnauzer (2),
+#Plott Hound (2), Pug (2), Rat Terrier (2)
+#BUT REALLY every breed on this list was never euthanized,
+#some even containing 50+ observations
+
+#try "Danger Breed" vs. "Safe Breed"
+
 
 ##### COLOR EFFECTS #####
 
 #100 most common colors
 data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-n) %>% print(n=100)
 
-#100 most commonly euthanized breeds, filtered by n >= 10
+#breeds ordered by euthanization rates, filtered by n >= 10
 data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% print(n=nrow(.))
 
+#top 30 most commonly euthanized colors, with words separated
+data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Color, into = c("1","2","3","4","5","6"), sep = "/| ") %>% print(n=nrow(.))
+#words counted in this group
+top30colors <- data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Color, into = c("1","2","3","4","5","6"), sep = "/| ")
+c(as.vector(top30colors$`1`),as.vector(top30colors$`2`),as.vector(top30colors$`3`),as.vector(top30colors$`4`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(top30colors)
+#most common are white (13), brown (7), black (5), brindle (5), 
+#blue (4), gray (4), point (4)
+
+#30 least frequently euthanized colors, with words separated
+data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 30) %>% separate(., Color, into = c("1","2","3","4","5","6"), sep = "/| ") %>% print(n=nrow(.))
+#words counted in this group
+bottom30colors <- data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 30) %>% separate(., Color, into = c("1","2","3","4","5","6"), sep = "/| ")
+c(as.vector(bottom30colors$`1`),as.vector(bottom30colors$`2`),as.vector(bottom30colors$`3`),as.vector(bottom30colors$`4`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(bottom30colors)
+#most common are white (11), tan (7), black (5), buff (4), sable (4)
+#probably won't get anything out of predicting by colors
