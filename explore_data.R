@@ -132,6 +132,7 @@ rm(bottom60breeds)
 #some even containing 50+ observations
 
 #try "Danger Breed" vs. "Safe Breed"
+#also try mix vs. pure bred
 
 
 ##### COLOR EFFECTS #####
