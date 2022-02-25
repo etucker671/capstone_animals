@@ -82,7 +82,7 @@ data %>% group_by(Month) %>%
             Euthanizations = (sum(OutcomeType == "Euthanasia")-AveEuthanizationsPerMonth)/AveEuthanizationsPerMonth) %>% 
   gather(.,key = "Outcome", value = Deviation, 2:3) %>% as.data.frame() %>% 
   ggplot(aes(x = Month, y = Deviation, col = Outcome)) + geom_point() + 
-  geom_line(aes(group=Outcome)) + scale_color_manual(values=c("blue","red"))
+  geom_line(aes(group=Outcome)) + scale_color_manual(values=c("blue","red")) + ylab("% Diff from Mean")
 
 rm(AveAdoptionsPerMonth,AveEuthanizationsPerMonth)
 
