@@ -132,7 +132,13 @@ rm(bottom60breeds)
 #some even containing 50+ observations
 
 #try "Danger Breed" vs. "Safe Breed"
-#also try mix vs. pure bred
+
+#proportions of mixed breeds vs. pure breds euthanized
+data %>% mutate(Mix = str_detect(Breed,"/|Mix")) %>% group_by(Mix) %>% summarize(euth_prop = mean(Euthanized == TRUE))
+
+#test for significance
+chisq.test(pull(mutate(data,Mix = str_detect(Breed,"/|Mix")),Mix),pull(data,Euthanized))
+#not significant
 
 
 ##### COLOR EFFECTS #####
