@@ -1,5 +1,5 @@
 #danger months
-data <- data %>% mutate(MonthStatus = factor(ifelse(Month=="Mar"|Month=="Apr"|Month=="May"|Month=="Jun","Danger","Safe")))
+data <- data %>% mutate(MonthStatus = factor(ifelse(Month=="Mar"|Month=="Apr"|Month=="May"|Month=="Jun","Danger","Neutral"), levels = c("Neutral","Danger")))
 
 #danger breeds
 bottom60breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
@@ -23,7 +23,7 @@ multi_string_detect<-function(x,y){
 
 BreedStatusTable <- data.frame(Breed = data$Breed, Danger = multi_string_detect(data$Breed,danger_breeds), Safe = multi_string_detect(data$Breed,safe_breeds)) %>% mutate(BreedStatus = ifelse(Danger == TRUE, "Danger", ifelse(Safe == TRUE, "Safe", "Neutral")))
 
-data <- data %>% mutate(BreedStatus = BreedStatusTable$BreedStatus)
+data <- data %>% mutate(BreedStatus = factor(BreedStatusTable$BreedStatus, levels = c("Neutral", "Safe", "Danger"), ordered = FALSE))
 
 #clean up
 rm(bottom60breeds,bottom60breeds2,BreedStatusTable,hi_topbreeds,top30breeds,top30breeds2)

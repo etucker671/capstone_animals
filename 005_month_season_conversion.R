@@ -1,5 +1,7 @@
 #extract month
 data <- data %>% mutate(Month = month(DateTime, label = TRUE))
+#remove ordering
+data$Month <- factor(data$Month, ordered = FALSE)
 
 #add season
 data <- data %>% mutate(Season = char("0"))

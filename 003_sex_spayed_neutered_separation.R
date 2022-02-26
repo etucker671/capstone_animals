@@ -10,8 +10,8 @@ temp[temp$FixedStatus=="",1] <- "Unknown"
 temp[is.na(temp$Sex),2] <- "Unknown"
 
 #convert to factors
-temp$FixedStatus <- as.factor(temp$FixedStatus)
-temp$Sex <- as.factor(temp$Sex)
+temp$FixedStatus <- factor(temp$FixedStatus, levels = c("Spayed-Neutered", "Intact", "Unknown"))
+temp$Sex <- factor(temp$Sex)
 
 #add to data set
 data <- cbind(data,temp)
