@@ -69,7 +69,8 @@ curve <- ROC %>% ggplot(aes(x = FPR, y = TPR)) +
   geom_line(col="red3",size=1.5) + geom_abline(intercept = 0, slope = 1) + 
   scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
   scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
-  theme_minimal() + xlab("False Positive Rate") + ylab("True Positive Rate")
+  theme_minimal() + xlab("False Positive Rate") + ylab("True Positive Rate") +
+  ggtitle("Training ROC, Logistic Regression")
 
 print(curve)
 
