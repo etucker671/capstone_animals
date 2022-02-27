@@ -2,11 +2,23 @@
 features <- final_data %>% select(AnimalType,AgeInYears,FixedStatus,Sex,Month,BreedStatus)
 outcomes <- final_data$Euthanized
 
+#convert features to numeric and scale
+knn_data <- select(final_data,-Month,-Season)
+knn_data$AnimalType <- as.numeric(ifelse(knn_data$AnimalType == "Cat",1,0))
+knn_data$AgeInYears[which(is.na(knn_data$AgeInYears)==TRUE)] <- median(na.omit(knn_data$AgeInYears))
+knn_data$AgeInYears <- knn_data$AgeInYears/max(knn_data$AgeInYears)
+knn_data$FixedStatus <- as.numeric(ifelse(knn_data$FixedStatus == "Spayed-Neutered",1,ifelse(knn_data$FixedStatus == "Unknown",0.25,0)))
+knn_data$Sex <- as.numeric(ifelse(knn_data$Sex == "Female",1,ifelse(knn_data$FixedStatus == "Unknown",0.5,0)))
+knn_data$MonthStatus <- as.numeric(ifelse(knn_data$MonthStatus == "Danger",1,0))
+knn_data$BreedStatus <- as.numeric(ifelse(knn_data$BreedStatus == "Danger",1,ifelse(knn_data$BreedStatus == "Neutral",0.3,0)))
+#breed codings determined by final_data %>% group_by(BreedStatus) %>% summarize(euth_prop = mean(Euthanized == TRUE))
+#then 0.3 = (neut_prop - safe_prop)/(danger_prop - safe_prop)
+
 #train model
-knn_fit <- train(x = features, y = outcomes, method = "glm")
+knn_fit <- train(Euthanized ~ ., data = knn_data, method = "knn")
 
 #get probabilities
-knn_probs <- predict(knn_fit,newdata = features, type = "prob")[,2]
+knn_probs <- predict(knn_fit, type = "prob")[,2]
 
 #generate ROC
 cutoffs <- seq(0,1,0.01)
@@ -28,7 +40,7 @@ curve <- ROC %>% ggplot(aes(x = FPR, y = TPR)) +
 print(curve)
 
 #clean up
-rm(curve,ROC,cutoffs,i, features, outcomes, knn_fit)
+rm(curve,ROC,cutoffs,i,knn_data,knn_fit)
 
 
 
