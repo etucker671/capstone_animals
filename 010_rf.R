@@ -2,6 +2,8 @@
 rf_data <- select(final_data,-Month,-Season)
 rf_data$AgeInYears[which(is.na(rf_data$AgeInYears)==TRUE)] <- median(na.omit(rf_data$AgeInYears))
 
+#### TUNING (can skip) ####
+
 #define mtry tuning function
 rf_mtry <- function(x){
   #train random forest
@@ -21,7 +23,7 @@ rf_mtry <- function(x){
   }
 
   #calculate and return AUC
-  auc_fxn <- sum(ROC_fxn[,2]*0.01)
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR))$value
   return(auc_fxn)
 }
 
@@ -50,7 +52,7 @@ rf_ntree <- function(x){
   }
   
   #calculate and return AUC
-  auc_fxn <- sum(ROC_fxn[,2]*0.01)
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR))$value
   return(auc_fxn)
 }
 
@@ -87,7 +89,7 @@ rf_sampsize <- function(x){
   }
   
   #calculate and return AUC
-  auc_fxn <- sum(ROC_fxn[,2]*0.01)
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR))$value
   return(auc_fxn)
 }
 
@@ -97,37 +99,5 @@ data.frame(sampsize = sampsizes, AUC = sapply(sampsizes,FUN=rf_sampsize))
 
 #go with sampsize = 1000
 
-#fit final model
-#train random forest
-rf_fit <- randomForest(Euthanized ~ ., data = rf_data, ntree = 125, sampsize = c(1000,1000), importance = TRUE, mtry = 2)
-
-#get predictions
-rf_probs <- predict(rf_fit, type = "prob")[,2]
-
-#generate ROC
-cutoffs <- seq(0,1,0.01)
-ROC <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
-for(i in 1:length(cutoffs)){
-  ROC[i,1] <- cutoffs[i]
-  ROC[i,2] <- calcTPR(rf_probs,cutoffs[i])
-  ROC[i,3] <- calcFPR(rf_probs,cutoffs[i])
-}
-
-#plot curve
-curve <- ROC %>% ggplot(aes(x = FPR, y = TPR)) + 
-  geom_line(col="red3",size=1.5) + geom_abline(intercept = 0, slope = 1) + 
-  scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
-  scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
-  theme_minimal() + xlab("False Positive Rate") + ylab("True Positive Rate") +
-  ggtitle("Training ROC, Random Forest")
-
-print(curve)
-
-#calculate AUC
-auc_rf_train <- sum(ROC[,2]*0.01)
-
-#print AUC
-auc_rf_train
-
 #clean up
-rm(curve,ROC,cutoffs,i,rf_data,ntrees,mtrys,sampsizes)
+rm(i,rf_data,ntrees,mtrys,sampsizes)

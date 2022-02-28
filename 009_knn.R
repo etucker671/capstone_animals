@@ -18,15 +18,15 @@ knn_probs <- predict(knn_fit, type = "prob")[,2]
 
 #generate ROC
 cutoffs <- seq(0,1,0.01)
-ROC <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+ROC_knn_train <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
 for(i in 1:length(cutoffs)){
-  ROC[i,1] <- cutoffs[i]
-  ROC[i,2] <- calcTPR(knn_probs,cutoffs[i])
-  ROC[i,3] <- calcFPR(knn_probs,cutoffs[i])
+  ROC_knn_train[i,1] <- cutoffs[i]
+  ROC_knn_train[i,2] <- calcTPR(knn_probs,cutoffs[i])
+  ROC_knn_train[i,3] <- calcFPR(knn_probs,cutoffs[i])
 }
 
 #plot curve
-curve <- ROC %>% ggplot(aes(x = FPR, y = TPR)) + 
+curve <- ROC_knn_train %>% ggplot(aes(x = FPR, y = TPR)) + 
   geom_line(col="red3",size=1.5) + geom_abline(intercept = 0, slope = 1) + 
   scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
   scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
@@ -36,13 +36,13 @@ curve <- ROC %>% ggplot(aes(x = FPR, y = TPR)) +
 print(curve)
 
 #calculate AUC
-auc_knn_train <- sum(ROC[,2]*0.01)
+auc_knn_train <- integrate(approxfun(x = ROC_knn_train$FPR, y = ROC_knn_train$TPR, ties = mean), min(ROC_knn_train$FPR), max(ROC_knn_train$FPR))$value
 
 #print AUC
 auc_knn_train
 
 #clean up
-rm(curve,ROC,cutoffs,i,knn_data)
+rm(curve,cutoffs,i,knn_data)
 
 
 
