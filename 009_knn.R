@@ -1,7 +1,3 @@
-#separate x and y
-features <- final_data %>% select(AnimalType,AgeInYears,FixedStatus,Sex,Month,BreedStatus)
-outcomes <- final_data$Euthanized
-
 #convert features to numeric and scale
 knn_data <- select(final_data,-Month,-Season)
 knn_data$AnimalType <- as.numeric(ifelse(knn_data$AnimalType == "Cat",1,0))
