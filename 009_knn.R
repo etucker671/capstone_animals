@@ -35,8 +35,14 @@ curve <- ROC %>% ggplot(aes(x = FPR, y = TPR)) +
 
 print(curve)
 
+#calculate AUC
+auc_knn_train <- sum(ROC[,2]*0.01)
+
+#print AUC
+auc_knn_train
+
 #clean up
-rm(curve,ROC,cutoffs,i,knn_data,knn_fit)
+rm(curve,ROC,cutoffs,i,knn_data)
 
 
 

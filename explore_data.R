@@ -170,3 +170,12 @@ c(as.vector(bottom30colors$`1`),as.vector(bottom30colors$`2`),as.vector(bottom30
 rm(bottom30colors)
 #most common are white (11), tan (7), black (5), buff (4), sable (4)
 #probably won't get anything out of predicting by colors
+
+
+###### OTHER FUNCTIONS ######
+
+#search for NA values
+sapply(final_data, FUN = function(x){
+  which(is.na(x) == TRUE)
+})
+
