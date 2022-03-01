@@ -22,3 +22,16 @@ package.check(package.names)
 
 #extract data from train.csv
 data <- read.csv("animaloutcomes.csv", header = TRUE)
+
+#create binary euthanization feature
+data <- data %>% mutate(Euthanized = OutcomeType == "Euthanasia")
+
+#split data
+set.seed(1, sample.kind = "Rounding")
+index <- createDataPartition(data$Euthanized, p = 0.8, list = FALSE)
+full_data <- data
+data <- full_data[index,]
+val_data <- full_data[-index,]
+
+#clean up
+rm(index)

@@ -115,8 +115,8 @@ data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summ
 top30breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
 c(as.vector(top30breeds$`1`),as.vector(top30breeds$`2`),as.vector(top30breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
 rm(top30breeds)
-#most common are Labrador Retriever (6), Pit Bull (6), Boxer (3),
-#Chow Chow (3), Chihuahua Shorthair (2), German Shepherd (2), Rottweiler (2)
+#most common are Labrador Retriever (6), Pit Bull (5), Boxer (2),
+#Chow Chow (2)
 
 #60 least commonly euthanized breeds, with breeds separated
 data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
@@ -124,11 +124,10 @@ data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summ
 bottom60breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
 c(as.vector(bottom60breeds$`1`),as.vector(bottom60breeds$`2`),as.vector(bottom60breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
 rm(bottom60breeds)
-#most common are Chihuahua Shorthair (11), Labrador Retriever (11), Miniature Poodle (4),
-#Australian Shepherd (2), Beagle (2), Cardigan Welsh Corgi (2), Cathoula (2),
-#Jack Russell Terrier (2), Miniature Pinscher (2), Miniature Schnauzer (2),
-#Plott Hound (2), Pug (2), Rat Terrier (2)
-#BUT REALLY every breed on this list was never euthanized,
+#most common are Chihuahua Shorthair (10), Labrador Retriever (6), Jack Russell Terrier (3), Miniature Poodle (3),
+#Miniature Schnauzer (3), Australian Shepherd (2), Beagle (2), Dachshund (2), Great Pyrenees (2),
+#Miniature Pinscher (2), Rat Terrier (2)
+#But really all on this list had extremely low euthanization rates
 #some even containing 50+ observations
 
 #try "Danger Breed" vs. "Safe Breed" - see R script

@@ -5,7 +5,7 @@ rf_data$AgeInYears[which(is.na(rf_data$AgeInYears)==TRUE)] <- median(na.omit(rf_
 #### FINAL MODEL ####
 
 #train random forest
-rf_fit <- randomForest(Euthanized ~ ., data = rf_data, ntree = 200, sampsize = c(200,200), importance = TRUE, mtry = 2)
+rf_fit <- randomForest(Euthanized ~ ., data = rf_data, ntree = 300, sampsize = c(100,100), importance = TRUE, mtry = 3)
 
 #get predictions
 rf_probs <- predict(rf_fit, type = "prob")[,2]
@@ -30,7 +30,7 @@ curve <- ROC_rf_train %>% ggplot(aes(x = FPR, y = TPR)) +
 print(curve)
 
 #calculate AUC
-auc_rf_train <- integrate(approxfun(x = ROC_rf_train$FPR, y = ROC_rf_train$TPR, ties = mean), min(ROC_rf_train$FPR), max(ROC_rf_train$FPR))$value
+auc_rf_train <- integrate(approxfun(x = ROC_rf_train$FPR, y = ROC_rf_train$TPR, ties = mean), min(ROC_rf_train$FPR), max(ROC_rf_train$FPR),subdivisions = 2000)$value
 
 #print AUC
 auc_rf_train

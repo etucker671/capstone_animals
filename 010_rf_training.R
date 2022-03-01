@@ -3,11 +3,12 @@ rf_data <- select(final_data,-Month,-Season)
 rf_data$AgeInYears[which(is.na(rf_data$AgeInYears)==TRUE)] <- median(na.omit(rf_data$AgeInYears))
 
 #### TUNING (can skip) ####
+set.seed(1, sample.kind = "Rounding")
 
 #define mtry tuning function
 rf_mtry <- function(x){
   #train random forest
-  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = 200, sampsize = c(500,500), importance = TRUE, mtry = x)
+  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = 300, sampsize = c(500,500), importance = TRUE, mtry = x)
   
   #get predictions
   rf_probs_fxn <- predict(rf_fit_fxn, type = "prob")[,2]
@@ -23,7 +24,7 @@ rf_mtry <- function(x){
   }
 
   #calculate and return AUC
-  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR))$value
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR),subdivisions=2000)$value
   return(auc_fxn)
 }
 
@@ -31,12 +32,12 @@ rf_mtry <- function(x){
 mtrys <- seq(1:6)
 data.frame(mtry = mtrys, AUC = sapply(mtrys,FUN=rf_mtry))
 
-#go with mtry = 2
+#go with mtry = 3
 
 #define ntree tuning function
 rf_ntree <- function(x){
   #train random forest
-  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = x, sampsize = c(500,500), importance = TRUE, mtry = 2)
+  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = x, sampsize = c(500,500), importance = TRUE, mtry = 3)
   
   #get predictions
   rf_probs_fxn <- predict(rf_fit_fxn, type = "prob")[,2]
@@ -52,7 +53,7 @@ rf_ntree <- function(x){
   }
   
   #calculate and return AUC
-  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR))$value
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR),subdivisions=2000)$value
   return(auc_fxn)
 }
 
@@ -60,20 +61,16 @@ rf_ntree <- function(x){
 ntrees <- c(1,3,5,10,15,25,50,75,125,200,325,525,850)
 data.frame(ntree = ntrees, AUC = sapply(ntrees,FUN=rf_ntree))
 
-#try a more finely-tuned ntree series past 100
-ntrees <- c(100,125,150,175,200,225,250)
+#try a more finely-tuned ntree series past 200
+ntrees <- c(200,225,250,275,300,325,350,375,400)
 data.frame(ntree = ntrees, AUC = sapply(ntrees,FUN=rf_ntree))
 
-#try a more finely-tuned ntree series under 15
-ntrees <- seq(1:15)
-data.frame(ntree = ntrees, AUC = sapply(ntrees,FUN=rf_ntree))
-
-#go with n = 125
+#go with ntree = 300
 
 #define sample size tuning function
 rf_sampsize <- function(x){
   #train random forest
-  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = 125, sampsize = c(x,x), importance = TRUE, mtry = 2)
+  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = 300, sampsize = c(x,x), importance = TRUE, mtry = 3)
   
   #get predictions
   rf_probs_fxn <- predict(rf_fit_fxn, type = "prob")[,2]
@@ -89,15 +86,15 @@ rf_sampsize <- function(x){
   }
   
   #calculate and return AUC
-  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR))$value
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR),subdivisions = 2000)$value
   return(auc_fxn)
 }
 
 #try different values for sampsize
-sampsizes <- c(25,50,75,100,200,350,500,750,1000,1500)
+sampsizes <- c(25,50,75,100,200,350,500,750,1000)
 data.frame(sampsize = sampsizes, AUC = sapply(sampsizes,FUN=rf_sampsize))
 
-#go with sampsize = 1000
+#go with sampsize = 100
 
 #clean up
-rm(i,rf_data,ntrees,mtrys,sampsizes)
+rm(rf_data,ntrees,mtrys,sampsizes)

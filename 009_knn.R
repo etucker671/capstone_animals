@@ -36,7 +36,7 @@ curve <- ROC_knn_train %>% ggplot(aes(x = FPR, y = TPR)) +
 print(curve)
 
 #calculate AUC
-auc_knn_train <- integrate(approxfun(x = ROC_knn_train$FPR, y = ROC_knn_train$TPR, ties = mean), min(ROC_knn_train$FPR), max(ROC_knn_train$FPR))$value
+auc_knn_train <- integrate(approxfun(x = ROC_knn_train$FPR, y = ROC_knn_train$TPR, ties = mean), min(ROC_knn_train$FPR), max(ROC_knn_train$FPR),subdivisions = 2000)$value
 
 #print AUC
 auc_knn_train

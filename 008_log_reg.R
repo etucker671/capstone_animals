@@ -4,30 +4,6 @@ glm_fit <- glm(data = final_data, Euthanized ~ AnimalType + AgeInYears + FixedSt
 #predict conditional probability of euthanization
 glm_probs <- predict(glm_fit, newdata = final_data, type = "response")
 
-#function to calculate results at various prediction cutoffs
-results <- function(probs, cutoff){
-  #generate predictions
-  predictions <- factor(probs >= cutoff, levels = c("FALSE","TRUE"))
-  #produce confusion matrix
-  cm <- confusionMatrix(predictions, reference = final_data$Euthanized, positive = "TRUE")
-  #measure true positive and false positive rates
-  TPR <- cm$table[2,2]/(cm$table[2,2] + cm$table[1,2])
-  FPR <- cm$table[2,1]/(cm$table[2,1] + cm$table[1,1])
-  #print rates
-  cat("True Positive Rate =", TPR,"\n")
-  cat("False Positive Rate =", FPR)
-}
-
-#test at various cutoffs
-#prob > 0.3
-#results(glm_probs,0.3)
-#prob > 0.2
-#results(glm_probs,0.2)
-#prob > 0.1
-#results(glm_probs,0.1)
-#prob > 0.05
-#results(glm_probs,0.05)
-
 
 #### ROC CURVE ####
 
@@ -75,7 +51,7 @@ curve <- ROC_glm_train %>% ggplot(aes(x = FPR, y = TPR)) +
 print(curve)
 
 #calculate AUC
-auc_glm_train <- integrate(approxfun(x = ROC_glm_train$FPR, y = ROC_glm_train$TPR, ties = mean), min(ROC_glm_train$FPR), max(ROC_glm_train$FPR))$value
+auc_glm_train <- integrate(approxfun(x = ROC_glm_train$FPR, y = ROC_glm_train$TPR, ties = mean), min(ROC_glm_train$FPR), max(ROC_glm_train$FPR),subdivisions = 2000)$value
 
 #clean up
 rm(curve,cutoffs,i)
