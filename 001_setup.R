@@ -21,4 +21,4 @@ package.check <- function(package.names){
 package.check(package.names)
 
 #extract data from train.csv
-data <- read.csv("train.csv", header = TRUE)
+data <- read.csv("animaloutcomes.csv", header = TRUE)
