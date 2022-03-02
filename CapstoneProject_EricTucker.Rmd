@@ -92,7 +92,7 @@ data$AgeuponOutcome %>% head()
 
 and in a variety of units, including:
 
-```{r e}
+```{r ee}
 #create conversion dataframe
 ages <- data.frame(matrix(ncol = 4, nrow = nrow(data)))
 x <- c("number", "unit_orig", "unit_new", "age_years")
@@ -197,7 +197,7 @@ data %>% group_by(SexuponOutcome) %>% summarize(n = n(), euth_prop = mean(Euthan
 
 As shown, males are generally more frequently euthanized than females, and "intact" animals are euthanized more than spayed or neutered animals. We separated out these variables with regex extraction, labeling the separate variables as Sex and, though not an flattering term, "Fixed" Status - representing either neutered (if male) or spayed (if female). Chi Squared tests were run to confirm statistical significance of euthanization rates between each variable, the results of which, along with the corresponding rates, are shown below.
 
-```{r i}
+```{r ii}
 #extract sex and spay/neuter status
 temp <- separate(data[7], col = "SexuponOutcome", into = c("FixedStatus","Sex"), sep = " ")
 
@@ -803,7 +803,7 @@ data.frame(Model = c("Logistic Regression","K Nearest Neighbors","Random Forest"
 
 We then tested our three models on the validation data set. As expected, the resulting AUCs were lower than on the training data, but still not terrible. In terms of comparison, the random forest model actually performed best on the validation data, retaining a similar AUC from training into validation (0.817 to 0.803). The KNN performance was reduced the most, making it the worst performing model on the validation set.
 
-```{r af}
+```{r aff}
 #new logistic regression predictions
 glm_probs_val <- predict(glm_fit, newdata = final_val_data, type = "response")
 
