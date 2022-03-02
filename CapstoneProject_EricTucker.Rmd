@@ -1,7 +1,7 @@
 ---
 title: "edX-Harvard Data Science Capstone Project: Shelter Animal Outcomes"
 author: "Eric Tucker"
-date: "March 1st, 2022"
+date: "March 3rd, 2022"
 output: pdf_document
 ---
 
