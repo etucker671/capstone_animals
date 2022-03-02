@@ -53,5 +53,8 @@ print(curve)
 #calculate AUC
 auc_glm_train <- integrate(approxfun(x = ROC_glm_train$FPR, y = ROC_glm_train$TPR, ties = mean), min(ROC_glm_train$FPR), max(ROC_glm_train$FPR),subdivisions = 2000)$value
 
+#print AUC
+cat("\nTraining AUC, Logistic Regression:\n",auc_glm_train,"\n")
+
 #clean up
 rm(curve,cutoffs,i)

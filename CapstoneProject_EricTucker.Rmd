@@ -343,823 +343,582 @@ cat("\nLeast Frequently Euthanized Breeds\n")
 data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% print(n=30)
 ```
 
-Again in an attempt to reduce dimensionality, we set out to divide the breeds into "Danger Breeds" (those at high risk of euthanization), "Safe Breeds" (those unlikely to get euthanized), and "Neutral Breeds" (the rest in between). First we, separated any mixed breeds as shown in the table below.
+Again in an attempt to reduce dimensionality, we set out to divide the breeds into "Danger Breeds" (those at high risk of euthanization), "Safe Breeds" (those unlikely to get euthanized), and "Neutral Breeds" (the rest in between). First we removed any "Mix" labels and separated top 30 breed strings into distinct breeds as shown in the table below. 30 breeds were selected as potential "Danger Breeds" because, as the data show, these generally represent breeds that are euthanized at least twice as frequently as average breeds. Any fraction could be chosen though, and this would be a good opportunity for future tuning.
 
-
-
-
-### Rating Count Effects and Penalizations
-
-It was then considered whether the number of ratings a user has submitted would affect that user's overall average rating. Plotting each user's average rating (centered at zero) against their number of ratings reveals that it actually does:
-
-```{r plot user rating count vs ave rating, echo = FALSE, fig.height = 3}
-edx %>% group_by(userId) %>% summarize(user_effect = mean(rating-overall_ave), ratings_count = n()) %>% ggplot(aes(x=ratings_count,y=user_effect)) + geom_point(alpha = 0.2) + geom_smooth()
+```{r o}
+#top 30 most commonly euthanized breeds, with breeds separated
+data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Breed2, into = c("1","2","3"), sep = "/") %>% print(n=nrow(.))
 ```
 
-As shown, the user effect tends to dip below average as the number of ratings increases. If this could improve the model, it would be easiest to add it in a linear fashion, so log transforming the data helped create a slightly more linear relationship:
+We then identified the unique individual breeds that showed up anywhere in this matrix. The results are shown below in order of frequency.
 
-```{r plot log user rating count vs ave rating, echo = FALSE, fig.height = 3}
-edx %>% group_by(userId) %>% summarize(user_effect = mean(rating-overall_ave), log_ratings_count = log(n())) %>% ggplot(aes(x=log_ratings_count,y=user_effect)) + geom_point(alpha = 0.2) + geom_smooth()
+```{r p}
+#single breeds counted in this group
+top30breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Breed2, into = c("1","2","3"), sep = "/")
+c(as.vector(top30breeds$`1`),as.vector(top30breeds$`2`),as.vector(top30breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(top30breeds)
 ```
 
-It was likely, however, that these effects were already taken into account by the user effect already calculated. After all, this relationship attempts to predict user effect based on the number of ratings on record for that user, but the outcomes of those ratings are already known, so the effect could be calculated directly rather than estimating it. To check for any residual effects, the calculated movie effects and (adjusted) user effects were removed, and the visualization was reconstructed:
+Next, we analyzed the 60 least frequently euthanized breeds. 60 was chosen because more breeds are in the safe zone than in the danger zone, and the majority in the lower 60 are never euthanized (48 to be exact). The remainder are euthanized at a rate less than half of the average animal rate, with the highest group member facing a euthanization rate of 2.7%. Again, this threshold could be set anywhere and should be the subject of optimization in future studies.
 
-```{r plot residual user effects against rating count, echo = FALSE, fig.height=3}
-edx %>% left_join(adj_user_effects, by = "userId") %>% left_join(movie_effects, by = "movieId") %>% group_by(userId) %>% summarize(resid_user_effect = mean(rating-overall_ave-user_effect-movie_effect), log_ratings_count = log(n())) %>% ggplot(aes(x=log_ratings_count,y=resid_user_effect)) + geom_point(alpha = 0.2) + geom_smooth()
+The unique breed names extracted from this "Safe Breeds" list are shown below in order of frequency counted.
+```{r q}
+#single breeds counted in this group
+bottom60breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/")
+c(as.vector(bottom60breeds$`1`),as.vector(bottom60breeds$`2`),as.vector(bottom60breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(bottom60breeds)
 ```
 
-And it became clear that no remaining measurable relationship existed.
+It was apparent that some breeds, such as Labrador Retrievers, show up frequently on both lists, indicating that they are not necessarily any more or less likely to be euthanized, but rather that they are mixed with other breeds quite frequently. To account for this, we extracted only the breeds that were unique between the two lists, and used these as our final lists of "Safe" vs. "Danger" breeds. Each observation in the training and validation data sets were then analyzed to see if the Breed string contained any element of either list. The results were stored in a new feature called "Breed Status", the summary of which is shown for the training data below.
 
-Conducting the same analysis on movies, however, indicated that there might actually be some residual movie effect based on ratings count remaining after the movie and user effects were taken out:
+```{r r}
+#define danger vs. safe breeds
+bottom60breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 60) %>% separate(., Breed2, into = c("1","2","3"), sep = "/")
+bottom60breeds2 <- c(as.vector(bottom60breeds$`1`),as.vector(bottom60breeds$`2`),as.vector(bottom60breeds$`3`)) %>% table() %>% as.data.frame()
+colnames(bottom60breeds2) <- c("Breed","Freq")
 
-```{r plot residual movie effects against rating count, echo = FALSE, fig.height=3}
-edx %>% left_join(adj_user_effects, by = "userId") %>% left_join(movie_effects, by = "movieId") %>% group_by(movieId) %>% summarize(resid_movie_effect = mean(rating-overall_ave-movie_effect-user_effect), log_ratings_count = log(n())) %>% ggplot(aes(x=log_ratings_count,y=resid_movie_effect)) + geom_point(alpha = 0.2) + geom_smooth()
-```
+top30breeds <- data %>% mutate(Breed2 = str_remove(Breed," Mix")) %>% group_by(Breed2) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Breed2, into = c("1","2","3"), sep = "/")
+top30breeds2 <- c(as.vector(top30breeds$`1`),as.vector(top30breeds$`2`),as.vector(top30breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+colnames(top30breeds2) <- c("Breed","Freq")
+hi_topbreeds <- c(as.vector(top30breeds$`1`),as.vector(top30breeds$`2`),as.vector(top30breeds$`3`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+colnames(hi_topbreeds) <- c("Breed","Freq")
 
-A model was fit to describe this relationship using the training data set. The details of the resulting model are shown below:
+danger_breeds <- hi_topbreeds[!(hi_topbreeds$Breed %in% bottom60breeds2$Breed),1] %>% as.character()
 
-```{r movie_ct_effect fit, echo = FALSE}
-movie_counts <- train %>% left_join(adj_user_effects, by = "userId") %>% left_join(movie_effects, by = "movieId") %>% group_by(movieId) %>% 
-  summarize(resid_movie_effect = mean(rating-overall_ave-movie_effect-user_effect), log_ratings_count = log(n()))
-fit_count <- lm(resid_movie_effect~log_ratings_count, data = movie_counts)
-summary(fit_count)
-```
+safe_breeds <- bottom60breeds2[!(bottom60breeds2$Breed %in% top30breeds2$Breed),1] %>% as.character()
 
-Significant coefficients were found, so this model was added to the initial predictions, and the resulting RMSE was calculated:
-
-```{r movie_ct_effect predictions, echo = FALSE}
-#add predictions to temp file
-rm(temp)
-temp <- test %>% left_join(adj_user_effects, by = "userId") %>% left_join(movie_effects, by = "movieId") %>% left_join(movie_counts, by = "movieId") %>% select(-resid_movie_effect) %>% mutate(movie_ct_effect = predict(fit_count,.))
-
-#calculate new RMSE based on all effects plus new movie count effect
-preds <- overall_ave + temp$movie_effect + temp$user_effect + temp$movie_ct_effect
-cat("RMSE =",RMSE(preds,test$rating),"\n")
-```
-
-This led to a slight, but nonetheless helpful reduction in the RMSE on the test set. This value was added to the results table:
-
-```{r results update 4, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + MovieFX + Adj_UserFX + Movie_Ct_FX",RMSE = RMSE(preds,test$rating)))
-rmse_results
-```
-
-The most obvious takeaway from these record count analyses, however, was that variability was significantly higher when counts were lower. Not only is the variability between the averages of users and movies higher, as shown in the previous graphs, but the variability among ratings given by a single user, or given for a single movie, as summarized by the variance, tends to be higher for users and movies with low rating counts. This is shown in the plots of variance vs. rating count below:
-
-```{r variance vs. user rating counts, fig.height = 3, echo = FALSE}
-edx %>% group_by(userId) %>% summarize(user_rating_count = n(), rating_variance = var(rating)) %>% ggplot(aes(x=user_rating_count,y=rating_variance)) + geom_point(alpha=0.2)
-```
-
-```{r variance vs. movie rating counts, fig.height = 3, echo = FALSE}
-edx %>% group_by(movieId) %>% summarize(movie_rating_count = n(), rating_variance = var(rating)) %>% ggplot(aes(x=movie_rating_count,y=rating_variance)) + geom_point(alpha=0.2)
-```
-
-This suggested that less faith could be placed in the user and movie effects for users or movies with few recorded ratings. The risk that this variability imposed was attempted to be reduced by using penalty terms to drive effects from these groups closer to zero, which is the equivalent of driving the resulting predictions closer to the average. A penalty term (lambda) was added to the denominator when calculating the mean, so calculations involving very large counts would be relatively unaffected, while calculations involving small counts would be reduced more significantly by a large lambda.
-
-This was attempted using a wide range of lambdas, and an improvement on RMSE was indeed observed. The application of penalties on movie-adjusted user effects within the most effective range of lambdas is shown below. A zero value was included to confirm the RMSE is equivalent to the previous (unpenalized) version of the model:
-
-```{r penalized user effects, echo = FALSE, fig.height = 4}
-#first reassign temp to a more long-term object 
-meaningful_effects <- temp %>% select(-log_ratings_count)
-
-#set lambdas
-lambdas <- seq(from=0, to=12)
-
-#then define penalization function
-pen_uFX <- function(lambda){
-  pen_adj_user_effects <- train %>% left_join(movie_effects, by = "movieId") %>% group_by(userId) %>% summarize(pen_user_effect = sum(rating - overall_ave-movie_effect)/(n()+lambda))
-  temp <- meaningful_effects %>% left_join(pen_adj_user_effects,by = "userId")
-  preds <- overall_ave + temp$movie_effect + temp$movie_ct_effect + temp$pen_user_effect
-  rmse <- RMSE(preds,test$rating)
-  rmse
+#define function for detecting any of the breeds in breed string
+multi_string_detect<-function(x,y){
+  temp<-sapply(y, function(z){str_detect(x, z)})
+  apply(temp, 1, any)
 }
 
-#run function using all lambdas, and plot resulting RMSEs
-rmses <- sapply(lambdas, FUN = pen_uFX)
-plot(y = rmses, x = lambdas, ylab = "RMSE", xlab = "lambda")
+#extract and assign danger/safe breeds in training data
+BreedStatusTable <- data.frame(Breed = data$Breed, Danger = multi_string_detect(data$Breed,danger_breeds), Safe = multi_string_detect(data$Breed,safe_breeds)) %>% mutate(BreedStatus = ifelse(Danger == TRUE, "Danger", ifelse(Safe == TRUE, "Safe", "Neutral")))
+
+data <- data %>% mutate(BreedStatus = factor(BreedStatusTable$BreedStatus, levels = c("Neutral", "Safe", "Danger"), ordered = FALSE))
+
+#extract and assign danger/safe breeds in validation data
+BreedStatusTable_val <- data.frame(Breed = val_data$Breed, Danger = multi_string_detect(val_data$Breed,danger_breeds), Safe = multi_string_detect(val_data$Breed,safe_breeds)) %>% mutate(BreedStatus = ifelse(Danger == TRUE, "Danger", ifelse(Safe == TRUE, "Safe", "Neutral")))
+
+val_data <- val_data %>% mutate(BreedStatus = factor(BreedStatusTable_val$BreedStatus, levels = c("Neutral", "Safe", "Danger"), ordered = FALSE))
+
+#clean up
+rm(bottom60breeds,bottom60breeds2,BreedStatusTable,BreedStatusTable_val,hi_topbreeds,top30breeds,top30breeds2)
+
+cat("\nCounts of Breed Statuses in Training Set\n")
+table(data$BreedStatus)
 ```
 
-As shown, the RMSE was maximally reduced through user effect penalization with a lambda value of 5. RMSE was actually reduced for all values between 1 and 9, but anything larger than 9 caused RMSE to increase. These effects were added to the model and the resulting RMSE to the results table:
+The euthanization rates among these groups were then analyzed and tested with a Chi Squared test to confirm statistically different proportions (results shown below). Significance was observed, and so these features were carried into the model development.
 
-```{r results update 5, echo = FALSE}
-best_lambda_userFX <- lambdas[which.min(rmses)]
-
-pen_adj_user_effects <- train %>% left_join(movie_effects, by = "movieId") %>% group_by(userId) %>% summarize(pen_user_effect = sum(rating - overall_ave-movie_effect)/(n()+best_lambda_userFX))
-
-#add effects to test data
-meaningful_effects <- meaningful_effects %>% left_join(pen_adj_user_effects,by = "userId")
-
-#add resulting RMSE to results table
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + MovieFX + Pen_Adj_UserFX + Movie_Ct_FX",RMSE = RMSE(overall_ave + meaningful_effects$movie_effect + meaningful_effects$pen_user_effect + meaningful_effects$movie_ct_effect,test$rating)))
-rmse_results
+```{r s}
+data %>% group_by(BreedStatus) %>% summarize(euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
+chisq.test(data$BreedStatus,data$Euthanized)
 ```
 
-This was attempted for the movie effects as well, and an extremely slight drop in test RMSE was noticed at a lambda of 1. Results shown below:
+### Color Effects
 
-```{r penalized movie effects, echo = FALSE, fig.height = 4}
-#set lambdas
-lambdas <- seq(from=0, to=3, by=0.25)
+Lastly, we tried to perform a similar analysis on the animals' colors, which also came in various combinations, making up a total of 342 unique colors reported. The 30 most frequently and 30 least frequently euthanized colors are shown below, separated into unique strings and organized by frequency of occurrence within each group. 
 
-#then define penalization function
-pen_mFX <- function(lambda){
-    pen_movie_effects <- train %>% group_by(movieId) %>% summarize(pen_movie_effect = sum(rating - overall_ave)/(n()+lambda))
-    temp <- meaningful_effects %>% left_join(pen_movie_effects,by = "movieId")
-    preds <- overall_ave + temp$pen_user_effect + temp$movie_ct_effect + temp$pen_movie_effect
-    rmse <- RMSE(preds,test$rating)
-    rmse
+```{r t}
+#top colors
+top30colors <- data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% slice_max(., order_by = euth_prop, n = 30) %>% separate(., Color, into = c("1","2","3","4","5","6"), sep = "/| ")
+cat("\nMost Frequently Euthanized Unique Colors\n")
+c(as.vector(top30colors$`1`),as.vector(top30colors$`2`),as.vector(top30colors$`3`),as.vector(top30colors$`4`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(top30colors)
+
+#bottom colors
+bottom30colors <- data %>% group_by(Color) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% slice_min(., order_by = euth_prop, n = 30) %>% separate(., Color, into = c("1","2","3","4","5","6"), sep = "/| ")
+cat("\nLeast Frequently Euthanized Unique Colors\n")
+c(as.vector(bottom30colors$`1`),as.vector(bottom30colors$`2`),as.vector(bottom30colors$`3`),as.vector(bottom30colors$`4`)) %>% table() %>% as.data.frame() %>% arrange(-Freq)
+rm(bottom30colors)
+```
+
+There was clearly a lot of overlap between these groups (white, black, blue, tan, etc), so we did not use color as a predictor in the models. However, there are a few colors that do appear to be unique to the groups such as "tricolor", so perhaps additional analysis of these would be helpful in future studies.
+
+
+### Final Data
+
+The data columns that were chosen as likely predictors were then separated out and saved as final data sets for model training and evaluation. The first 10 rows of the final training set are shown below.
+
+```{r u}
+#set AnimalType as factor
+data$AnimalType <- factor(data$AnimalType, levels = c("Cat","Dog"), ordered = FALSE)
+val_data$AnimalType <- factor(val_data$AnimalType, levels = c("Cat","Dog"), ordered = FALSE)
+
+#set Euthanized as factor
+data$Euthanized <- factor(data$Euthanized, levels = c("FALSE","TRUE"), ordered = FALSE)
+val_data$Euthanized <- factor(val_data$Euthanized, levels = c("FALSE","TRUE"), ordered = FALSE)
+
+#produce data tables with final predictors
+final_data <- data %>% select(AnimalType, AgeInYears, FixedStatus, Sex, MonthStatus, BreedStatus, Euthanized)
+final_val_data <- val_data %>% select(AnimalType, AgeInYears, FixedStatus, Sex, MonthStatus, BreedStatus, Euthanized)
+
+#print top 10 rows
+head(final_data, n=10)
+```
+
+
+## Predictive Models
+
+### Logistic Regression
+
+We first fit a logistic regression model to the training data, the coefficients of which are shown below. With this model, Breed Status and Fixed Status demonstrated the strongest predictive power, though all predictors, with the exception of Month Status, were significant.
+
+```{r v}
+#fit linear model
+glm_fit <- glm(data = final_data, Euthanized ~ AnimalType + AgeInYears + FixedStatus + Sex + MonthStatus + BreedStatus, family = binomial(link = "logit"))
+
+#print coefficients
+summary(glm_fit)$coefficients
+```
+
+Because euthanization is a rare event, overall accuracy was likely to be a poor measure of model performance. Instead we generated an ROC curve for each model and analyzed the area under the curve (AUC). An AUC of 1 would indicate a perfect model, that is, a model that can identify all the true positives while generating zero false positives. We did not expect to achieve this result, but our goal was to get as close as possible. The ROC curve and resulting AUC on the training data are shown for the logistic regression model below. 
+
+```{r x}
+#predict conditional probability of euthanization
+glm_probs <- predict(glm_fit, newdata = final_data, type = "response")
+
+#### ROC CURVE ####
+
+#define TPR function
+calcTPR <- function(probs, cutoff){
+  #generate predictions
+  predictions <- factor(probs >= cutoff, levels = c("FALSE","TRUE"))
+  #produce confusion matrix
+  cm <- confusionMatrix(predictions, reference = final_data$Euthanized, positive = "TRUE")
+  #measure true positive rate
+  TPR <- cm$table[2,2]/(cm$table[2,2] + cm$table[1,2])
+  #print TPR
+  TPR
 }
 
-#run function using all lambdas, and plot resulting RMSEs
-rmses <- sapply(lambdas, FUN = pen_mFX)
-plot(y = rmses, x = lambdas, ylab = "RMSE", xlab = "lambda")
-```
-
-Considering that each predictor in this model is affected by the previous one, it seemed, looking back, that this penalization should have been done when first calculating the movie effects, then the penalized user effects would be calculated off those, and then the residual movie count effects would be fit based off both of those. These features were not discovered until later in the process though, so an unusual order was used. It is likely that the movie count effect and the penalized movie effects are correlated, since they are both impacted by movie rating count. For fear of overfitting, and since the test RMSE impact was so small, the penalized movie effects were left out of this initial model.
-
-### Linear Model Re-Fit
-
-To see how things would have turned out if analyzed in the "correct order", the first three predictors were recalculated in the order of penalized movie effects first, penalized movie-adjusted user effects second, and residual movie count effects last. The results of calculating the first two are shown below:
-
-```{r re-run of meaningful predictors, echo = FALSE, fig.height = 4}
-#penalized movie effects first
-#set lambdas
-lambdas <- seq(from=0, to=3, by=0.25)
-
-#define penalization function
-pen_mFX2 <- function(lambda){
-    pen_movie_effects2 <- train %>% group_by(movieId) %>% summarize(pen_movie_effect = sum(rating - overall_ave)/(n()+lambda))
-    temp <- test %>% left_join(pen_movie_effects2,by = "movieId")
-    preds <- overall_ave + temp$pen_movie_effect
-    rmse <- RMSE(preds,test$rating)
-    rmse
+#define FPR function
+calcFPR <- function(probs, cutoff){
+  #generate predictions
+  predictions <- factor(probs >= cutoff, levels = c("FALSE","TRUE"))
+  #produce confusion matrix
+  cm <- confusionMatrix(predictions, reference = final_data$Euthanized, positive = "TRUE")
+  #measure true positive rate
+  FPR <- cm$table[2,1]/(cm$table[2,1] + cm$table[1,1])
+  #print TPR
+  FPR
 }
 
-#run function using all lambdas, and plot resulting RMSEs
-rmses <- sapply(lambdas, FUN = pen_mFX2)
-plot(y = rmses, x = lambdas, ylab = "RMSE", xlab = "lambda", main = "Movie Effect Penalization")
-
-#find best lambda for penalized movie effects
-best_lambda_movieFX2 <- lambdas[which.min(rmses)]
-
-pen_movie_effects2 <- train %>% group_by(movieId) %>% summarize(pen_movie_effect = sum(rating - overall_ave)/(n()+best_lambda_movieFX2))
-
-#add effects to test data
-meaningful_effects2 <- test %>% left_join(pen_movie_effects2, by = "movieId")
-
-#confirm RMSE
-cat("RMSE =", RMSE(overall_ave + meaningful_effects2$pen_movie_effect,test$rating), "for pen. movie effect only.\n")
-
-#then calculate penalized, movie-adjusted user effects
-#set lambdas
-lambdas <- seq(from=0, to=10, by=0.5)
-
-#define penalization function
-pen_uFX2 <- function(lambda){
-  pen_adj_user_effects2 <- train %>% left_join(pen_movie_effects2, by = "movieId") %>% group_by(userId) %>% summarize(pen_user_effect = sum(rating - overall_ave - pen_movie_effect)/(n()+lambda))
-  temp <- meaningful_effects2 %>% left_join(pen_adj_user_effects2,by = "userId")
-  preds <- overall_ave + temp$pen_movie_effect + temp$pen_user_effect
-  rmse <- RMSE(preds,test$rating)
-  rmse
+#produce curve values
+cutoffs <- seq(0,1,0.01)
+ROC_glm_train <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+for(i in 1:length(cutoffs)){
+  ROC_glm_train[i,1] <- cutoffs[i]
+  ROC_glm_train[i,2] <- calcTPR(glm_probs,cutoffs[i])
+  ROC_glm_train[i,3] <- calcFPR(glm_probs,cutoffs[i])
 }
 
-#run function using all lambdas, and plot resulting RMSEs
-rmses <- sapply(lambdas, FUN = pen_uFX2)
-plot(y = rmses, x = lambdas, ylab = "RMSE", xlab = "lambda", main = "User Effect Penalization")
+#plot curve
+curve <- ROC_glm_train %>% ggplot(aes(x = FPR, y = TPR)) + 
+  geom_line(col="red3",size=1.5) + geom_abline(intercept = 0, slope = 1) + 
+  scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  theme_minimal() + xlab("False Positive Rate") + ylab("True Positive Rate") +
+  ggtitle("Training ROC, Logistic Regression")
 
-#find best lambda for penalized movie-adjusted user effects
-best_lambda_userFX2 <- lambdas[which.min(rmses)]
+print(curve)
 
-pen_user_effects2 <- train %>% left_join(pen_movie_effects2, by = "movieId") %>% group_by(userId) %>% summarize(pen_user_effect = sum(rating - overall_ave - pen_movie_effect)/(n()+best_lambda_movieFX2))
+#calculate AUC
+auc_glm_train <- integrate(approxfun(x = ROC_glm_train$FPR, y = ROC_glm_train$TPR, ties = mean), min(ROC_glm_train$FPR), max(ROC_glm_train$FPR),subdivisions = 2000)$value
 
-#add effects to test data
-meaningful_effects2 <- meaningful_effects2 %>% left_join(pen_user_effects2, by = "userId")
+#print AUC
+cat("\nTraining AUC, Logistic Regression:\n",auc_glm_train,"\n")
 
-#confirm RMSE
-cat("RMSE =", RMSE(overall_ave + meaningful_effects2$pen_movie_effect + meaningful_effects2$pen_user_effect, test$rating), "for pen. movie effect  + pen. movie-adjusted user effect.\n")
+#clean up
+rm(curve,cutoffs,i)
 ```
 
-This produced an RMSE slightly smaller than that produced by the unpenalized movie effects, unpenalized adjuster user effects, and movie count effects combined from the older model, and it did it with without even including the residual movie count effects. Note that in this case, the lambdas were tuned a little more finely, and value of 1.5 was used for the movie effect, while a value of 5 was still used for the user effect. 
+0.799 is not a terrible AUC, but it was certain to go down when we ran the model on the validation data, so we tried a few other models first to see if we could improve upon this value.
 
-Given that the residual movie count effects are expected to be correlated to the penalized movie effects, it was investigated to see if an effect remained by graphing residuals of this new model vs the log-transformed movie rating counts:
 
-```{r re-run of meaningful predictors part 2, echo = FALSE, fig.height = 3}
-#check for residual movie count effects
-train %>% left_join(pen_movie_effects2, by = "movieId") %>% left_join(pen_user_effects2, by = "userId") %>% group_by(movieId) %>% summarize(resid_movie_effect = mean(rating - overall_ave - pen_movie_effect - pen_user_effect), log_ratings_count = log(n())) %>% ggplot(aes(x=log_ratings_count,y=resid_movie_effect)) + geom_point(alpha = 0.2) + geom_smooth()
+### K-Nearest Neighbors
+
+Then then tried to fit a KNN model to the training data. Because euclidean distance was to be used to calculate the proximity of each observation, we first converted all predictors to numerical values. We also standardized them to all be within a range from 0 to 1. This way no predictor would be weighted more heavily than another. In cases where more than two factors existed in a feature, such as in Fixed Status and Breed Status, the distance between 0 and 1 of the middle factor was assigned based on the observed euthanization frequency in the training data, relative to the frequencies of the outer factors.
+
+The results of the KNN model on the training data are shown below.
+
+```{r y}
+#convert features to numeric and scale
+knn_data <- final_data
+knn_data$AnimalType <- as.numeric(ifelse(knn_data$AnimalType == "Cat",1,0))
+knn_data$AgeInYears[which(is.na(knn_data$AgeInYears)==TRUE)] <- median(na.omit(knn_data$AgeInYears))
+knn_data$AgeInYears <- knn_data$AgeInYears/max(knn_data$AgeInYears)
+knn_data$FixedStatus <- as.numeric(ifelse(knn_data$FixedStatus == "Spayed-Neutered",1,ifelse(knn_data$FixedStatus == "Unknown",0.3,0)))
+knn_data$Sex <- as.numeric(ifelse(knn_data$Sex == "Female",1,ifelse(knn_data$FixedStatus == "Unknown",0.5,0)))
+knn_data$MonthStatus <- as.numeric(ifelse(knn_data$MonthStatus == "Danger",1,0))
+knn_data$BreedStatus <- as.numeric(ifelse(knn_data$BreedStatus == "Danger",1,ifelse(knn_data$BreedStatus == "Neutral",0.3,0)))
+#breed codings determined by final_data %>% group_by(BreedStatus) %>% summarize(euth_prop = mean(Euthanized == TRUE))
+#then 0.3 = (neut_prop - safe_prop)/(danger_prop - safe_prop)
+
+#train model
+knn_fit <- train(Euthanized ~ ., data = knn_data, method = "knn")
+
+knn_fit
 ```
 
-As expected, the residual effect was found to be significantly, if not entirely, reduced. A model was fit anyway to see if it would help. The resulting model details are shown below:
 
-```{r re-run meaningful predictors part 3, echo = FALSE}
-movie_counts2 <- train %>% left_join(pen_movie_effects2, by = "movieId") %>% left_join(pen_user_effects2, by = "userId") %>% group_by(movieId) %>% summarize(resid_movie_effect = mean(rating - overall_ave - pen_movie_effect - pen_user_effect), log_ratings_count = log(n()))
+The tuning parameters within the KNN function resulted in an optimal k size of 9, but this was trained based on accuracy, so we again checked the ROC and AUC (shown below), and we shown a marked improvement over the logistic regression model.
 
-fit_count2 <- lm(resid_movie_effect~log_ratings_count, data = movie_counts2)
-summary(fit_count2)
-```
+```{r z}
+#get probabilities
+knn_probs <- predict(knn_fit, type = "prob")[,2]
 
-This still showed statistically significant, albeit smaller, coefficients, so this model was used to further predict the ratings of the test set, and the resulting RMSE was calculated:
-
-```{r re-run meaningful predictors part 4, echo = FALSE}
-#predict residual movie count effects of the test set
-temp <- test %>% left_join(pen_movie_effects2, by = "movieId") %>% left_join(pen_user_effects2, by = "userId") %>% left_join(movie_counts2, by = "movieId") %>% select(-resid_movie_effect) %>% mutate(movie_ct_effect = predict(fit_count2,.))
-
-#calculate new RMSE based on all effects plus new movie count effect
-preds <- overall_ave + temp$pen_movie_effect + temp$pen_user_effect + temp$movie_ct_effect
-cat("RMSE =",RMSE(preds,test$rating),"for pen. movie effect  + pen. movie-adjusted user effect + resid. movie count effect.","\n")
-```
-
-This actually increased the RMSE on the test set for this second model, indicating this last predictor overfit the training data. Reverting back to the model fit with only two predictors, however, gives a slightly higher RMSE than our original model involving all three predictors, indicating that the combination of an unpenalized movie effect and a linear-fit movie count effect, is better than a penalized movie effect on its own, at least with this data set. So these results were not added to the results table, and the original three-feature model was carried forward.
-
-```{r leave only go-forward model, include = FALSE}
-rm(fit_count2, meaningful_effects2, movie_counts2, adj_movie_effects, pen_movie_effects2, pen_user_effects2, user_effects, temp, adj_user_effects)
-
-movie_ct_effects <- movie_counts[,-2] %>% mutate(movie_ct_effect = predict(fit_count, data = .)) %>% select(-log_ratings_count)
-
-meaningful_effects <- meaningful_effects %>% select(-user_effect)
-
-names(meaningful_effects)[which(names(meaningful_effects)=="pen_user_effect")] <- "pen_adj_user_effect"
-
-col_order <- c("userId", "movieId", "rating", "timestamp", "title", "movie_effect", "pen_adj_user_effect", "movie_ct_effect")
-meaningful_effects <- meaningful_effects[, ..col_order]
-rm(col_order)
-
-names(pen_adj_user_effects)[which(names(pen_adj_user_effects)=="pen_user_effect")] <- "pen_adj_user_effect"
-```
-
-### Temporal Effects
-
-It was also questioned whether there was a temporal effect on user ratings - if a user tended to increase or decrease their mean rating over time.  This is likely similar to user count data, but slightly different, as it accounts for time and order rather than just overall quantity. The timestamp of each rating was analyzed and compared against other ratings from each user. Users were sampled with varying rating counts, and their ratings over time were plotted. The results for all sampled users are shown below:
-
-```{r temporal effects of sampled users, echo=FALSE, fig.height=2.5}
-#sample a subset of users with varying numbers of ratings recorded
-sampled_rating_counts <- edx %>% group_by(userId) %>% summarize(count = n()) %>% arrange(count) %>% slice(round(seq(from=100, to = max(userId), length.out = 20)))
-#plot their ratings over time using the timestamp value
-timeplots <- list()
-for(i in 1:nrow(sampled_rating_counts)){
-  temp <- edx %>% filter(userId == sampled_rating_counts$userId[i]) 
- timeplots[[i]] <- ggplot(temp,aes(x = timestamp, y = rating)) + geom_point() + geom_smooth()
-  rm(temp)
-}
-grid.arrange(timeplots[[1]],timeplots[[2]],timeplots[[3]],ncol=3,heights = c(1,1))
-grid.arrange(timeplots[[4]],timeplots[[5]],timeplots[[6]],ncol=3,heights = c(1,1))
-grid.arrange(timeplots[[7]],timeplots[[8]],timeplots[[9]],ncol=3,heights = c(1,1))
-grid.arrange(timeplots[[10]],timeplots[[11]],timeplots[[12]],ncol=3,heights = c(1,1))
-grid.arrange(timeplots[[13]],timeplots[[14]],timeplots[[15]],ncol=3,heights = c(1,1))
-grid.arrange(timeplots[[16]],timeplots[[17]],timeplots[[18]],ncol=3,heights = c(1,1))
-```
-
-As shown, no clear effects were observed on any of the samples. The time elapsed between each rating and the user's first rating was then evaluated. The range and distribution of the days since first rating for all observations in the training set are shown below:
-
-```{r days elapsed since first rating 1, echo = FALSE, fig.height = 4}
-first_rating_dates <- train %>% arrange(timestamp) %>% mutate(date = as_datetime(timestamp), day = round_date(date, unit = "day")) %>% group_by(userId) %>% summarize(first_rating_date = first(day))
-
-temp <- left_join(train,first_rating_dates, by = "userId") %>% mutate(date = as_datetime(timestamp), day = round_date(date, unit = "day"), days_since_first = interval(first_rating_date,day) %>% as.period %/% days())
-
-range(temp$days_since_first)
-hist(temp$days_since_first, xlab = "Days Since First Rating", main = "")
-```
-
-As shown, the days elapsed since a user's first rating and each observation range between 0 and 4122 with a heavy concentration near zero. Removing the zeros and plotting on log scale helps with visualization a little:
-
-```{r log transformed days elapsed, echo = FALSE, fig.height = 4}
-log(temp$days_since_first[temp$days_since_first > 0]) %>% hist(xlab = "Log of Days Since First Rating", main = "")
-```
-
-A randomly sampled segment (to reduce graphing time) of the time elapsed data was plotted against rating in search of trends:
-
-```{r ratings vs elapsed days plot, fig.height = 3, echo = FALSE}
-temp %>% slice_sample(prop = 0.01) %>% ggplot(aes(x=days_since_first,y=rating)) + geom_point(alpha=0.2) + geom_smooth()
-```
-
-Still no real trends were observed, so the search for a temporal effect was abandoned.
-
-### Genre Effects
-
-Another attempt at prediction improvement was made using the genre information, which had been mostly unused up to this point, with the notable exception that the movie effects were likely to pick up a good amount of the genre effects, as movies of those genres would likely be rated more highly on average. The overall movie effects, however, were likely to also include factors such as expensive marketing budgets and popular actors or directors that would affect ratings in a way that genre alone would not. To ensure no genre effects that did make it into the predictions were double-counted, however, the analysis was focused on the residuals, that is the variability that was still remaining after the current best model's predictions were made.
-
-First, it was necessary to confirm that a genre effect even exists. Grouping the effects of the individual movies by their genres and averaging each group indicates that it does. Below are the 20 most impactful genres according to the averaged effects of movies within them:
-
-```{r most impactful genres, echo = FALSE}
-movie_effects %>% left_join(train, by = "movieId") %>% 
-  select(movie_effect,genres) %>% group_by(genres) %>% 
-  summarize(genre_effect = mean(movie_effect)) %>% 
-  arrange(-abs(genre_effect)) %>% print(n=20)
-```
-
-It appeared that there were a lot of Horror, Action, and Sci-Fi themes in the groups that had significantly lower than average ratings.
-
-Since the genres are bundled together in one column however, there were 797 genres recorded, each a unique blend of various other genres. Even with a data set this large, overfitting was a concern with that many predictors, so isolation of the genres that made up these combinations was attempted by separating the strings, and it was found that there were actually only 20 unique genres which made up the combinations:
-
-```{r unique genres, echo = FALSE}
-unique_genres <- edx$genres %>% str_split("\\|") %>% unlist() %>% unique()
-unique_genres
-```
-
-The relative frequency of these genres was then estimated by sampling 100,000 ratings:
-
-```{r genre samples, echo = FALSE}
-sapply(X = unique_genres, FUN = str_detect, sample(edx$genres,100000)) %>% colSums()/100000
-```
-
-The most common genres reported were Drama and Comedy, while the most uncommon were IMAX and "(no genres listed)". In order to avoid building models off overly sparse data, genres that were reported in less than 2% of ratings were ignored. This resulted in removing "(no genres listed)", IMAX, Documentary, and Film Noir. The remaining genres are shown below in alphabetical order:
-
-```{r genres of interest, echo = FALSE}
-genres_of_interest <- unique_genres[!unique_genres %in% 
-      c("Film-Noir", "Documentary", "IMAX", "(no genres listed)")]
-genres_of_interest <- genres_of_interest[order(genres_of_interest)]
-genres_of_interest
-```
-
-These genres were then coded into the training data as individual predictors using the following code:
-
-```{r coding genres, echo = TRUE}
-genre_combinations <- edx %>% group_by(genres) %>% summarize()
-
-code.genres <- function(data){
-    genres <- sapply(X = genres_of_interest, FUN = str_detect, data$genres)
-    newdata <- cbind(data, genres)
-    names(newdata)[which(names(newdata)=="Sci-Fi")] <- "SciFi"
-    newdata
+#generate ROC
+cutoffs <- seq(0,1,0.01)
+ROC_knn_train <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+for(i in 1:length(cutoffs)){
+  ROC_knn_train[i,1] <- cutoffs[i]
+  ROC_knn_train[i,2] <- calcTPR(knn_probs,cutoffs[i])
+  ROC_knn_train[i,3] <- calcFPR(knn_probs,cutoffs[i])
 }
 
-coded_genre_combinations <- code.genres(genre_combinations)
+#plot curve
+curve <- ROC_knn_train %>% ggplot(aes(x = FPR, y = TPR)) + 
+  geom_line(col="red3",size=1.5) + geom_abline(intercept = 0, slope = 1) + 
+  scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  theme_minimal() + xlab("False Positive Rate") + ylab("True Positive Rate") +
+  ggtitle("Training ROC, KNN")
 
-train_plus_features <- train %>% left_join(movie_effects, by = "movieId") %>% 
-  left_join(pen_adj_user_effects, by = "userId") %>% 
-  left_join(movie_ct_effects, by = "movieId") %>% 
-  left_join(coded_genre_combinations, by = "genres")
+print(curve)
+
+#calculate AUC
+auc_knn_train <- integrate(approxfun(x = ROC_knn_train$FPR, y = ROC_knn_train$TPR, ties = mean), min(ROC_knn_train$FPR), max(ROC_knn_train$FPR),subdivisions = 2000)$value
+
+#print AUC
+cat("\nTraining AUC, K Nearest Neighbors:\n",auc_knn_train,"\n")
+
+#clean up
+rm(curve,cutoffs,i,knn_data)
 ```
 
-Relationships between ratings and each of the individual genres were then sought out. First, to confirm a genre effect still existed at all, the centered ratings were regressed on the genres without any adjustments. The effects of each genre, ordered from most negative to most positive are shown below:
 
-```{r ols genres vs ratings, echo = FALSE}
-names(train_plus_features)[which(names(train_plus_features)=="Sci-Fi")] <- "SciFi"
+### Random Forest
 
-genre_fx_on_ratings <- lm(rating - overall_ave ~ Action + Adventure + Animation + Children + Comedy + Crime + Drama + Fantasy + Horror + Musical + Mystery + Romance + SciFi + Thriller + War + Western, data = train_plus_features)
+The last model attempted as a random forest (decision tree) model. This model has a lot of tuning options, so we tested a few of the key tuning parameters in order to optimize our performance.
 
-summary(genre_fx_on_ratings)$coefficients[-1,c(1,4)] %>% as.data.frame() %>% arrange(Estimate)
-```
+First, we tuned mtry, the number of features that may be randomly selected from at any split point. The resulting AUCs for each input between 1 and 6 are shown below. Mtry = 2 was carried forward.
 
-Note that the genre effects generally match those previously seen in terms of effect direction, and they are all statistically significant, indicating a genre effect indeed exists. The remaining residuals, instead of the centered ratings, were then regressed on the genres to see if these genre effects could actually improve the model. The results of this regression are shown below:
+```{r aa}
+#create RF dataset and fill NAs
+rf_data <- final_data
+rf_data$AgeInYears[which(is.na(rf_data$AgeInYears)==TRUE)] <- median(na.omit(rf_data$AgeInYears))
 
-```{r ols genres vs residuals, echo = FALSE}
-genre_fx_on_resids <- lm(rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect ~ Action + Adventure + Animation + Children + Comedy + Crime + Drama + Fantasy + Horror + Musical + Mystery + Romance + SciFi + Thriller + War + Western, data = train_plus_features)
+#### TUNE ####
+if(version$year >= 2019) {
+  set.seed(2, sample.kind="Rounding")
+} else {
+  set.seed(2)
+}
 
-summary(genre_fx_on_resids)$coefficients[-1,c(1,4)] %>% as.data.frame() %>% arrange(Estimate)
-```
-
-As shown, removing the previously identified effects drove the detected genre effects effectively to zero and eliminated any statistical significance, meaning that any genre effects that existed across the full data set are already captured by the effects previously calculated. This was not surprising. It was expected that the movie effects in particular would pick up the majority of the genre effects, as a movie of a popular genre, such as war or drama, would be expected to receive higher average ratings when all users are considered. 
-
-```{r clean up overall genre effects, echo = FALSE}
-rm(genre_fx_on_ratings,genre_fx_on_resids)
-```
-
-What the overall movie effects would not take into account, however, are any particular user affinities for specific genres that deviate from normal preferences. For example, if a particular user loves horror movies, the normal adjustment for the horror genre would incorrectly drive down the predicted rating, and the overall movie effect would, on average, do the same, since most people have been shown to dislike horror movies. To account for these individual preferences, a series of user-specific genre model fits were attempted. This was attempted first on a single user, specifically user 3817, who had a high number of ratings in both the training and test data sets -- 3383 and 350, respectively, to be exact. The results of the model fit for this user are shown below:
-
-```{r user 3817 genre effects, echo = FALSE}
-user <- 3817
-
-genre_fx_on_resids_solo_user <- lm(rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect ~ Action + Adventure + Animation + Children + Comedy + Crime + Drama + Fantasy + Horror + Musical + Mystery + Romance + SciFi + Thriller + War + Western, data = filter(train_plus_features, userId == user))
-
-summary(genre_fx_on_resids_solo_user)$coefficients[-1,c(1,4)] %>% as.data.frame() %>% arrange(Estimate)
-```
-
-Analyzing the residuals for user 3817 alone, a user-specific genre effect indeed emerges. This user appears to particularly like horror movies, with an average rating increase of 0.25 stars and a p-value of almost zero. They seem to also significantly dislike animation, romance, and drama. It was then tested if the dot product of this effect vector and each movie's genre vector, otherwise thought of as the overall user-specific genre effect for each movie's genre combination, would improve the RMSE for this user. The results of this test are shown below:
-
-```{r test rmse user genre effects user 3817, echo = FALSE}
-test_plus_features <- test %>% left_join(movie_effects, by = "movieId") %>% left_join(pen_adj_user_effects, by = "userId") %>% left_join(movie_ct_effects, by = "movieId") %>% left_join(coded_genre_combinations, by = "genres")
-
-user_genre_effects_solo_user <- summary(genre_fx_on_resids_solo_user)$coefficients[-1,c(1,4)] %>% as.data.frame() %>% select(Estimate)
-
-user_genre_effects <- data.frame(userId = user, t(user_genre_effects_solo_user))
-
-test_plus_features_solo_user <- test_plus_features %>% filter(userId == user) %>% left_join(user_genre_effects, by = "userId")
-
-user_genre_movie_effects_solo_user <- test_plus_features_solo_user %>% mutate(user_genre_movie_effect = Action*ActionTRUE + Adventure*AdventureTRUE + Animation*AnimationTRUE + Children*ChildrenTRUE + Comedy*ComedyTRUE + Crime*CrimeTRUE + Drama*DramaTRUE + Fantasy*FantasyTRUE + Horror*HorrorTRUE + Musical*MusicalTRUE + Mystery*MysteryTRUE + Romance*RomanceTRUE + SciFi*SciFiTRUE + Thriller*ThrillerTRUE + War*WarTRUE + Western*WesternTRUE) %>% select(user_genre_movie_effect)
-
-new_fx_solo_user <- test_plus_features_solo_user %>% cbind(user_genre_movie_effects_solo_user) %>% select(userId, movieId, rating, title, genres, movie_effect, pen_adj_user_effect, movie_ct_effect, user_genre_movie_effect)
-
-#check old RMSE for this user
-cat("Old RMSE for user 3817:\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect, new_fx_solo_user$rating)
-
-#check new RMSE for this user
-cat("New RMSE using user-specific genre effects:\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect + new_fx_solo_user$user_genre_movie_effect, new_fx_solo_user$rating)
-```
-
-And indeed an improvement was found. However, many of these coefficients were not statistically significant, and this is even more likely to happen as this technique is applied to users with fewer ratings, so regularization with lasso regression was applied, which should drive insignificant coefficients to zero and leave only user-specific genre effects that meaningfully improve test RMSE, as determined by cross-validation. Lasso essentially takes the objective function that is minimized during ordinary least squares (OLS) and adds a penalty term (lambda) which is multiplied by absolute value of the coefficients in the objective function. As a result, the function pays a "penalty" for increasing the coefficient size and will only retain that increase if the benefit of the reduced loss function outweighs the damage caused by the penalty. Lambda is again in this case a tuning parameter that can take on any value ranging from 0, which would mean no penalty and therefore be identical to OLS, to infinite, in which case all coefficients would go to zero and the model would simply be the intercept. Here a range of lambdas from 0.0001 to 10 was tested.
-
-```{r grid, echo = FALSE}
-grid = 10^seq(-4,1,length=100)
-```
-
-The lasso-regression results for user 3817 are shown below:
-
-```{r lasso user 3817, echo = FALSE}
-#first make sure lasso yields same results at lambda = 0
-cat("Lasso regression coefficients with lambda = 0 (same as ordinary least squares regression):\n")
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-predict(out, type = "coefficients",s=0)[2:17,]
-
-#then find best lambda
-cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                    y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-bestlam <- cv.out$lambda.min
-cat("Best lambda as determined by cross-validation:\n")
-bestlam
-
-#find coefficients with best lambda
-cat("Lasso regression coefficients with optimized lambda:\n")
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-predict(out, type = "coefficients",s=bestlam)[2:17,]
-```
-
-And it was found that the coefficients were similar but slightly reduced in magnitude at the optimized lambda. This is the result of regularization on a large data set. If the same regularization function were run on a user with significantly fewer ratings recorded, more shrinkage would be expected. User 54364, for example, had only 150 ratings in the test set and 1366 in the training set. Lasso regression on this user yields:
-
-```{r lasso user 54364, echo = FALSE}
-#set user ID
-user <- 54364
-
-#find best lambda
-grid = 10^seq(4,-4,length=100)
-cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                    y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-bestlam <- cv.out$lambda.min
-
-#find coefficients with best lambda
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-predict(out, type = "coefficients",s=bestlam)[2:17,]
-```
-
-In this case, many genre effects were driven entirely to zero, and the effects for Mystery (positive), Musical (negative), and Action (negative) were kept quite large. Looking at the ordinary linear regression for this user helps explain why:
-
-```{r line reg for user 54364, echo = FALSE}
-user <- 54364
-
-genre_fx_on_resids_solo_user <- lm(rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect ~ Action + Adventure + Animation + Children + Comedy + Crime + Drama + Fantasy + Horror + Musical + Mystery + Romance + SciFi + Thriller + War + Western, data = filter(train_plus_features, userId == user))
-
-summary(genre_fx_on_resids_solo_user)$coefficients[-1,c(1,4)] %>% as.data.frame() %>% arrange(Estimate)
-```
-
-As expected, with ordinary least squares, Musical, Action, and Mystery all show significantly nonzero coefficients with relatively small p-values. Comparatively, the highly shrunken coefficients were very close to zero and had large p-values (thus were less significant). 
-
-Note: There were other genres that also have relatively insignificant coefficients and were not pushed to zero. Because the method here involves cross-validation, the fits are random, and indeed if the analysis is run multiple times (not shown here), some of the other genres are set to zero as well. In all runs attempted though, the insignificant coefficients are drastically reduced in magnitude.
-
-To demonstrate an extreme case, this method was tested on user 62, who had only 22 ratings in the training set and 4 ratings in the test set. The unpenalized linear regression coefficients for this user are shown below:
-
-```{r line reg for user 62, echo = FALSE}
-user <- 62
-
-genre_fx_on_resids_solo_user <- lm(rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect ~ Action + Adventure + Animation + Children + Comedy + Crime + Drama + Fantasy + Horror + Musical + Mystery + Romance + SciFi + Thriller + War + Western, data = filter(train_plus_features, userId == user))
-
-summary(genre_fx_on_resids_solo_user)$coefficients[-1,c(1,4)] %>% as.data.frame() %>% arrange(Estimate)
-```
-
-Note that some coefficients deviated far from zero, but all had high p-values. The most significant effects seemed to be for War movies, which this user apparently really liked. The results of the lasso regression on this user are:
-
-```{r lasso user 62, echo = FALSE}
-#set user ID
-user <- 62
-
-#find best lambda
-grid = 10^seq(4,-4,length=100)
-cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                    y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-bestlam <- cv.out$lambda.min
-bestlam
-
-#find coefficients with best lambda
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-predict(out, type = "coefficients",s=bestlam)[2:17,]
-```
-
-As expected, nearly all coefficients were set to zero. Among the exceptions was indeed the War genre, which had the highest coefficient of any genre. It was still significantly reduced from the OLS estimate, however, which should help prevent overfitting when dealing with such a small data set.
-
-But the main question remained - do these penalized regressions lead to an improvement in RMSE on the test data? These fits were tested on the sampled users' test data to see. User 3817 was tested first, whose lasso fits were nearly identical to OLS fits, so a similar result was expected:
-
-```{r lasso RMSE test user 3817, echo = FALSE}
-#set user ID
-user <- 3817
-
-#find best lambda
-cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                    y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-bestlam <- cv.out$lambda.min
-cat("Best lambda:\n")
-bestlam
-
-#find coefficients with best lambda
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-
-user_genre_effects_solo_user <- predict(out, type = "coefficients", s=bestlam)[2:17,]
-
-user_genre_effects <- data.frame(userId = user, t(user_genre_effects_solo_user))
-
-test_plus_features_solo_user <- test_plus_features %>% filter(userId == user) %>% left_join(user_genre_effects, by = "userId")
-
-user_genre_movie_effects_solo_user <- test_plus_features_solo_user %>% mutate(user_genre_movie_effect = Action.x*Action.y + Adventure.x*Adventure.y + Animation.x*Animation.y + Children.x*Children.y + Comedy.x*Comedy.y + Crime.x*Crime.y + Drama.x*Drama.y + Fantasy.x*Fantasy.y + Horror.x*Horror.y + Musical.x*Musical.y + Mystery.x*Mystery.y + Romance.x*Romance.y + SciFi.x*SciFi.y + Thriller.x*Thriller.y + War.x*War.y + Western.x*Western.y) %>% select(user_genre_movie_effect)
-
-new_fx_solo_user <- test_plus_features_solo_user %>% cbind(user_genre_movie_effects_solo_user) %>% select(userId, movieId, rating, title, genres, movie_effect, pen_adj_user_effect, movie_ct_effect, user_genre_movie_effect)
-
-#check old RMSE for this user
-cat("Old RMSE for user",user,":\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect, new_fx_solo_user$rating)
-
-#check new RMSE for this user
-cat("New RMSE for user",user,"using user-specific genre effects:","\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect + new_fx_solo_user$user_genre_movie_effect, new_fx_solo_user$rating)
-```
-
-And a similar improvement to what was previously shown was found. Similar results were then also found for the other two users:
-
-```{r lasso RMSE test user 54364, echo = FALSE}
-#set user ID
-user <- 54364
-
-#find best lambda
-cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                    y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-bestlam <- cv.out$lambda.min
-cat("Best lambda:\n")
-bestlam
-
-#find coefficients with best lambda
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-
-user_genre_effects_solo_user <- predict(out, type = "coefficients", s=bestlam)[2:17,]
-
-user_genre_effects <- data.frame(userId = user, t(user_genre_effects_solo_user))
-
-test_plus_features_solo_user <- test_plus_features %>% filter(userId == user) %>% left_join(user_genre_effects, by = "userId")
-
-user_genre_movie_effects_solo_user <- test_plus_features_solo_user %>% mutate(user_genre_movie_effect = Action.x*Action.y + Adventure.x*Adventure.y + Animation.x*Animation.y + Children.x*Children.y + Comedy.x*Comedy.y + Crime.x*Crime.y + Drama.x*Drama.y + Fantasy.x*Fantasy.y + Horror.x*Horror.y + Musical.x*Musical.y + Mystery.x*Mystery.y + Romance.x*Romance.y + SciFi.x*SciFi.y + Thriller.x*Thriller.y + War.x*War.y + Western.x*Western.y) %>% select(user_genre_movie_effect)
-
-new_fx_solo_user <- test_plus_features_solo_user %>% cbind(user_genre_movie_effects_solo_user) %>% select(userId, movieId, rating, title, genres, movie_effect, pen_adj_user_effect, movie_ct_effect, user_genre_movie_effect)
-
-#check old RMSE for this user
-cat("Old RMSE for user",user,":\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect, new_fx_solo_user$rating)
-
-#check new RMSE for this user
-cat("New RMSE for user",user,"using user-specific genre effects:","\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect + new_fx_solo_user$user_genre_movie_effect, new_fx_solo_user$rating)
-```
-
-```{r lasso RMSE test user 62, echo = FALSE}
-#set user ID
-user <- 62
-
-#find best lambda
-cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                    y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-bestlam <- cv.out$lambda.min
-cat("Best lambda:\n")
-bestlam
-
-#find coefficients with best lambda
-out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-              y=as.matrix(filter(train_plus_features, userId == user)[,3]-overall_ave-rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-
-user_genre_effects_solo_user <- predict(out, type = "coefficients", s=bestlam)[2:17,]
-
-user_genre_effects <- data.frame(userId = user, t(user_genre_effects_solo_user))
-
-test_plus_features_solo_user <- test_plus_features %>% filter(userId == user) %>% left_join(user_genre_effects, by = "userId")
-
-user_genre_movie_effects_solo_user <- test_plus_features_solo_user %>% mutate(user_genre_movie_effect = Action.x*Action.y + Adventure.x*Adventure.y + Animation.x*Animation.y + Children.x*Children.y + Comedy.x*Comedy.y + Crime.x*Crime.y + Drama.x*Drama.y + Fantasy.x*Fantasy.y + Horror.x*Horror.y + Musical.x*Musical.y + Mystery.x*Mystery.y + Romance.x*Romance.y + SciFi.x*SciFi.y + Thriller.x*Thriller.y + War.x*War.y + Western.x*Western.y) %>% select(user_genre_movie_effect)
-
-new_fx_solo_user <- test_plus_features_solo_user %>% cbind(user_genre_movie_effects_solo_user) %>% select(userId, movieId, rating, title, genres, movie_effect, pen_adj_user_effect, movie_ct_effect, user_genre_movie_effect)
-
-#check old RMSE for this user
-cat("Old RMSE for user",user,":\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect, new_fx_solo_user$rating)
-
-#check new RMSE for this user
-cat("New RMSE for user",user,"using user-specific genre effects:","\n")
-RMSE(overall_ave + new_fx_solo_user$movie_effect + new_fx_solo_user$pen_adj_user_effect + new_fx_solo_user$movie_ct_effect + new_fx_solo_user$user_genre_movie_effect, new_fx_solo_user$rating)
-```
-
-In all three cases the test RMSE was improved. It's worth noting as well that the optimal lambda increased as the size of the data set decreased, meaning these smaller data sets were penalized more, as was intended. This provided confidence in expanding this methodology to the entire data set. The function was then applied to all users using the following code:
-
-```{r find lasso genre effects across all users, echo = TRUE}
-#create data frame to store all user genre effects
-names <- colnames(user_genre_effects)
-user_genre_effects <- data.frame(matrix(nrow = 1, ncol = 17, data = 0))
-colnames(user_genre_effects) <- names
-rm(names)
-
-#identify all users with variance >0
-users_lasso <- train %>% group_by(userId) %>% 
-  summarize(var = var(rating)) %>% filter(var>0)
-
-#calculate effects for each user and add to data frame
-#i=1 - commented out - used only for progress report during dev
-
-for(user in users_lasso$userId){
-  #find best lambda
-  cv.out <- cv.glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                      y=as.matrix(filter(train_plus_features, userId ==user)[,3] - overall_ave - 
-                                    rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1, lambda = grid, nfolds = 5)
-  bestlam <- cv.out$lambda.min
-
-  #find coefficients with best lambda
-  out <- glmnet(x=as.matrix(filter(train_plus_features, userId == user)[,10:25]),
-                y=as.matrix(filter(train_plus_features, userId == user)[,3] - overall_ave - 
-                              rowSums(filter(train_plus_features, userId == user)[,c(7,8,9)])),alpha=1)
-
-  user_genre_effects_solo_user_vert <- predict(out, type = "coefficients", s=bestlam)[2:17,]
-
-  user_genre_effects_solo_user_horiz <- data.frame(userId = user,
-                                                   t(user_genre_effects_solo_user_vert))
+#define mtry tuning function
+rf_mtry <- function(x){
+  #train random forest
+  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = 300, sampsize = c(500,500), importance = TRUE, mtry = x)
   
-  user_genre_effects <- rbind(user_genre_effects,user_genre_effects_solo_user_horiz)
-  
-  #report progress of loop during dev
-  #cat(i*100/nrow(users_lasso),"%","\n")
-  #i=i+1
+  #get predictions
+  rf_probs_fxn <- predict(rf_fit_fxn, type = "prob")[,2]
+
+  #generate ROC
+  cutoffs_fxn <- seq(0,1,0.01)
+
+  ROC_fxn <- data.frame(Cutoff = numeric(length = length(cutoffs_fxn)), TPR = numeric(length = length(cutoffs_fxn)), FPR = numeric(length = length(cutoffs_fxn)))
+  for(i in 1:length(cutoffs_fxn)){
+    ROC_fxn[i,1] <- cutoffs_fxn[i]
+    ROC_fxn[i,2] <- calcTPR(rf_probs_fxn,cutoffs_fxn[i])
+    ROC_fxn[i,3] <- calcFPR(rf_probs_fxn,cutoffs_fxn[i])
+  }
+
+  #calculate and return AUC
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR),subdivisions=2000)$value
+  return(auc_fxn)
 }
 
-#merge user-specific genre effects with observations
-test_plus_features <- test_plus_features %>% 
-  left_join(user_genre_effects, by = "userId")
+#try different values for mtry
+mtrys <- seq(1:6)
+data.frame(mtry = mtrys, AUC = sapply(mtrys,FUN=rf_mtry))
+```
+ 
+ 
+We then tuned the ntree parameter, which is the number of trees generated in the model and averaged together to produce final predictions. The resulting AUCs from tree counts ranging from 1 to 850 are shown below. 
 
-#replace NAs with zeroes
-test_plus_features[is.na(test_plus_features)] <- 0
+```{r ab}
+#define ntree tuning function
+rf_ntree <- function(x){
+  #train random forest
+  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = x, sampsize = c(500,500), importance = TRUE, mtry = 2)
+  
+  #get predictions
+  rf_probs_fxn <- predict(rf_fit_fxn, type = "prob")[,2]
+  
+  #generate ROC
+  cutoffs_fxn <- seq(0,1,0.01)
+  
+  ROC_fxn <- data.frame(Cutoff = numeric(length = length(cutoffs_fxn)), TPR = numeric(length = length(cutoffs_fxn)), FPR = numeric(length = length(cutoffs_fxn)))
+  for(i in 1:length(cutoffs_fxn)){
+    ROC_fxn[i,1] <- cutoffs_fxn[i]
+    ROC_fxn[i,2] <- calcTPR(rf_probs_fxn,cutoffs_fxn[i])
+    ROC_fxn[i,3] <- calcFPR(rf_probs_fxn,cutoffs_fxn[i])
+  }
+  
+  #calculate and return AUC
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR),subdivisions=2000)$value
+  return(auc_fxn)
+}
 
-#calculate dot products
-test_plus_features <- test_plus_features %>% 
-  mutate(user_genre_movie_effect = Action.x*Action.y + Adventure.x*Adventure.y +
-           Animation.x*Animation.y + Children.x*Children.y + Comedy.x*Comedy.y +
-           Crime.x*Crime.y + Drama.x*Drama.y + Fantasy.x*Fantasy.y + Horror.x*Horror.y +
-           Musical.x*Musical.y + Mystery.x*Mystery.y + Romance.x*Romance.y +
-           SciFi.x*SciFi.y + Thriller.x*Thriller.y + War.x*War.y + Western.x*Western.y)
+#try different values of ntree
+ntrees <- c(1,3,5,10,15,25,50,75,125,200,325,525,850)
+data.frame(ntree = ntrees, AUC = sapply(ntrees,FUN=rf_ntree))
 ```
 
-This script took approximately 10 hours to run on the full data set. One of the sample users was first checked to ensure the analysis was done correctly. The data for the first rating from user 3817 is shown below. Note that each genre.x represents whether the movie belongs to the genre, while each genre.y represents the user's affinity for the genre. The user_genre_movie_effect is the dot product of both of these vectors.
 
-```{r lasso check user 3817 values, echo = FALSE}
-#user 3817 value check
-test_plus_features %>% filter(userId == 3817) %>% first() %>% t()
+It appeared that the AUC started to stabilize after 200 trees or so, so an additional tuning test was run in this range, the results of which are shown below.
+
+```{r ac}
+#try a more finely-tuned ntree series past 200
+ntrees <- c(200,225,250,275,300,325,350,375,400)
+data.frame(ntree = ntrees, AUC = sapply(ntrees,FUN=rf_ntree))
 ```
 
-The test RMSE for this user was assessed using the old and new models, and approximately the same improvement as previously calculated was confirmed, shown below. (Recall it may not be identical, as there is some randomness in the tuning of lambda.)
+Ntree = 200 was carried forward into the final tuning test, which tested the sample size. Note that in each test, the samples drawn from both euthanized and non-euthanized observation groups were equal. Deviations from equality were tested as well but yielded poor results (not shown). The results of sample size tuning on AUC values are shown below.
 
-```{r lasso check sample user RMSEs, echo = FALSE}
-cat("Old RMSE for user 3817:\n")
-test_plus_features %>% filter(userId == 3817) %>% summarize(rmse = sqrt(mean((rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect)^2)))
-cat("New RMSE for user 3817:\n")
-test_plus_features %>% filter(userId == 3817) %>% summarize(rmse = sqrt(mean((rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect - user_genre_movie_effect)^2)))
+```{r ad}
+#define sample size tuning function
+rf_sampsize <- function(x){
+  #train random forest
+  rf_fit_fxn <- randomForest(Euthanized ~ ., data = rf_data, ntree = 200, sampsize = c(x,x), importance = TRUE, mtry = 2)
+  
+  #get predictions
+  rf_probs_fxn <- predict(rf_fit_fxn, type = "prob")[,2]
+  
+  #generate ROC
+  cutoffs_fxn <- seq(0,1,0.01)
+  
+  ROC_fxn <- data.frame(Cutoff = numeric(length = length(cutoffs_fxn)), TPR = numeric(length = length(cutoffs_fxn)), FPR = numeric(length = length(cutoffs_fxn)))
+  for(i in 1:length(cutoffs_fxn)){
+    ROC_fxn[i,1] <- cutoffs_fxn[i]
+    ROC_fxn[i,2] <- calcTPR(rf_probs_fxn,cutoffs_fxn[i])
+    ROC_fxn[i,3] <- calcFPR(rf_probs_fxn,cutoffs_fxn[i])
+  }
+  
+  #calculate and return AUC
+  auc_fxn <- integrate(approxfun(x = ROC_fxn$FPR, y = ROC_fxn$TPR, ties = mean), min(ROC_fxn$FPR), max(ROC_fxn$FPR),subdivisions = 2000)$value
+  return(auc_fxn)
+}
+
+#try different values for sampsize
+sampsizes <- c(25,50,75,100,200,350,500,750,1000)
+data.frame(sampsize = sampsizes, AUC = sapply(sampsizes,FUN=rf_sampsize))
 ```
 
-The resulting RMSE for the full data set was then calculated, and indeed a small but meaningful improvement was observed:
+A sample size of 100 was found to perform best, and so the final model was fit on the training data with these parameters, and the resulting ROC curve and AUC (shown below) were recorded.
 
-```{r lasso rmse check on full set, echo = FALSE}
-cat("\nOld RMSE for all users:\n")
-test_plus_features %>% summarize(rmse = sqrt(mean((rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect)^2)))
-cat("New RMSE for all users:\n")
-test_plus_features %>% summarize(rmse = sqrt(mean((rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect - user_genre_movie_effect)^2)))
+```{r ae}
+#clean up
+rm(rf_data,ntrees,mtrys,sampsizes)
+
+#create RF dataset and fill NAs
+rf_data <- final_data
+rf_data$AgeInYears[which(is.na(rf_data$AgeInYears)==TRUE)] <- median(na.omit(rf_data$AgeInYears))
+
+#### FINAL MODEL ####
+
+#train random forest
+rf_fit <- randomForest(Euthanized ~ ., data = rf_data, ntree = 200, sampsize = c(100,100), importance = TRUE, mtry = 2)
+
+#get predictions
+rf_probs <- predict(rf_fit, type = "prob")[,2]
+
+#generate ROC
+cutoffs <- seq(0,1,0.01)
+ROC_rf_train <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+for(i in 1:length(cutoffs)){
+  ROC_rf_train[i,1] <- cutoffs[i]
+  ROC_rf_train[i,2] <- calcTPR(rf_probs,cutoffs[i])
+  ROC_rf_train[i,3] <- calcFPR(rf_probs,cutoffs[i])
+}
+
+#plot curve
+curve <- ROC_rf_train %>% ggplot(aes(x = FPR, y = TPR)) + 
+  geom_line(col="red3",size=1.5) + geom_abline(intercept = 0, slope = 1) + 
+  scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  theme_minimal() + xlab("False Positive Rate") + ylab("True Positive Rate") +
+  ggtitle("Training ROC, Random Forest")
+
+print(curve)
+
+#calculate AUC
+auc_rf_train <- integrate(approxfun(x = ROC_rf_train$FPR, y = ROC_rf_train$TPR, ties = mean), min(ROC_rf_train$FPR), max(ROC_rf_train$FPR),subdivisions = 2000)$value
+
+#print AUC
+cat("\nTraining AUC, Random Forest:\n",auc_rf_train,"\n")
+
+#clean up
+rm(curve,cutoffs,i,rf_data)
 ```
 
-This value was added to the results table:
+Variable importance data from the final random forest model was captured and is presented below. The most impactful predictors in this model seemed to be Fixed Status and Age, followed by Breed Status. It is notable that Age was not as impactful in the logistic regression model, indicating that perhaps this feature exhibits a highly non-linear relationship with outcome.
 
-```{r results update 6, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + MovieFX + Pen_Adj_UserFX + Movie_Ct_FX + User_Genre_Movie_FX",RMSE = RMSE(overall_ave + test_plus_features$movie_ct_effect + test_plus_features$movie_effect + test_plus_features$pen_adj_user_effect + test_plus_features$user_genre_movie_effect, test$rating)))
-rmse_results
+```{r zz}
+cat("\nImportance of Variables in Random Forest Model:\n")
+rf_fit$importance
 ```
 
-It was clear, however, that although the RMSE was reduced overall, it actually increased for some users. Below are outcomes for 30 randomly selected users from the test data set, shown alongside their rating counts and variances. 
+### Model Comparison
 
-```{r new rmses for 30 sampled users, echo = FALSE}
-test_plus_features %>% group_by(userId) %>% summarize(count = n(), variance = var(rating), rmse_old = sqrt(mean((rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect - user_genre_movie_effect)^2)), rmse_new = sqrt(mean((rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect)^2))) %>% slice_sample(n=30) %>% print(n=30)
+The three models were then compared, as shown below. The best performing model, at least on the training data, was KNN, followed by random forest, followed by logistic regression.
+
+```{r af}
+#combine all training ROC data
+all_ROCs_train <- rbind(mutate(ROC_glm_train,Method = rep("GLM",101)), 
+                        mutate(ROC_knn_train,Method = rep("KNN",101)), 
+                        mutate(ROC_rf_train, Method = rep("RandomForest",101)))
+
+#plot all training ROCs together
+allplot <- all_ROCs_train %>% ggplot(aes(x = FPR, y = TPR, col = Method)) + 
+  geom_line(size=1) + geom_abline(intercept = 0, slope = 1, col = "gray") + 
+  scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  theme_minimal() + xlab("False Positive Rate") + 
+  ylab("True Positive Rate") + ggtitle("Training ROC Curves")
+
+print(allplot)
+rm(allplot)
+
+#print all AUCs
+data.frame(Model = c("Logistic Regression","K Nearest Neighbors","Random Forest"), Training_AUC = c(auc_glm_train,auc_knn_train,auc_rf_train)) %>% arrange(-Training_AUC)
+
 ```
 
-As shown, predictions were actually worse for some users when the new model was applied. There was no immediate, obvious indication as to which users posed this issue, and since the analysis time was so extreme, further fine-tuning of this model component was not attempted, though clearly there is room for improvement. The user-specific genre effects calculated here were the final additions made to the linear model. 
 
-### Matrix Factorization
+### Model Validation
 
-The final method attempted was matrix factorization. This method considers the sparse matrix of users (rows) by movies (columns) and the ratings values that exist for each observation, which will be the only values in the matrix that are actually filled in. (In this case we have only have about 1% of ratings in the training data set out of all possible user-movie combinations.) The covariances between all users and all movies are analyzed in order to identify latent features that group movies into common categories and group users by their affinity for those categories. Matrix factorization requires a gradient descent algorithm to converge on pair of matrices P and Q that represent the user-feature loadings and the movie-feature loadings, respectively, and are able to approximately reconstruct the original matrix while filling in the missing gaps. The dot products of these P and Q matrices for any particular user-movie combination are what produce the predictions based on the interaction of features. The concept is somewhat similar to the user-specific genre effects described earlier, as it uses both a movie loading vector and a user loading vector to generate a prediction, though in this case the analysis results in many implicit features beyond just genres being considered, for example, movies that star Tom Hanks and the set of users who are die-hard Tom Hanks fans. (Even though this data is not explicitly defined in the data set, it can be identified using matrix factorization.)
+We then tested our three models on the validation data set. As expected, the resulting AUCs were lower than on the training data, but still not terrible. In terms of comparison, the random forest model actually performed best on the validation data, retaining a similar AUC from training into validation (0.817 to 0.803). The KNN performance was reduced the most, making it the worst performing model on the validation set.
 
-For this model, the recoystem package was utilized along with the input and tuning parameters recommended at https://cran.r-project.org/web/packages/recosystem/readme/README.html. The resulting RMSEs from the recosystem matrix factorization algorithm, both from the gradient descent iterations on training data, and the final test RMSE, are shown below:
+```{r af}
+#new logistic regression predictions
+glm_probs_val <- predict(glm_fit, newdata = final_val_data, type = "response")
 
-```{r matrix factorization, echo = FALSE}
-train_reco <- data_memory(user_index = train$userId, item_index = train$movieId, rating = train$rating, index1 = TRUE)
+#new knn predictions
+#first recreate knn data set
+knn_data <- final_data
+knn_data$AnimalType <- as.numeric(ifelse(knn_data$AnimalType == "Cat",1,0))
+knn_data$AgeInYears[which(is.na(knn_data$AgeInYears)==TRUE)] <- median(na.omit(knn_data$AgeInYears))
+knn_data$AgeInYears <- knn_data$AgeInYears/max(knn_data$AgeInYears)
+knn_data$FixedStatus <- as.numeric(ifelse(knn_data$FixedStatus == "Spayed-Neutered",1,ifelse(knn_data$FixedStatus == "Unknown",0.3,0)))
+knn_data$Sex <- as.numeric(ifelse(knn_data$Sex == "Female",1,ifelse(knn_data$FixedStatus == "Unknown",0.5,0)))
+knn_data$MonthStatus <- as.numeric(ifelse(knn_data$MonthStatus == "Danger",1,0))
+knn_data$BreedStatus <- as.numeric(ifelse(knn_data$BreedStatus == "Danger",1,ifelse(knn_data$BreedStatus == "Neutral",0.3,0)))
 
-test_reco <- data_memory(user_index = test$userId, item_index = test$movieId, rating = test$rating, index1 = TRUE)
+#then treat validation data similarly
+knn_val_data <- final_val_data
+knn_val_data$AnimalType <- as.numeric(ifelse(knn_val_data$AnimalType == "Cat",1,0))
+knn_val_data$AgeInYears[which(is.na(knn_val_data$AgeInYears)==TRUE)] <- median(na.omit(knn_data$AgeInYears))
+knn_val_data$AgeInYears <- knn_val_data$AgeInYears/max(knn_data$AgeInYears)
+knn_val_data$FixedStatus <- as.numeric(ifelse(knn_val_data$FixedStatus == "Spayed-Neutered",1,ifelse(knn_val_data$FixedStatus == "Unknown",0.3,0)))
+knn_val_data$Sex <- as.numeric(ifelse(knn_val_data$Sex == "Female",1,ifelse(knn_val_data$FixedStatus == "Unknown",0.5,0)))
+knn_val_data$MonthStatus <- as.numeric(ifelse(knn_val_data$MonthStatus == "Danger",1,0))
+knn_val_data$BreedStatus <- as.numeric(ifelse(knn_val_data$BreedStatus == "Danger",1,ifelse(knn_val_data$BreedStatus == "Neutral",0.3,0)))
 
-r = Reco()
+#make predictions
+knn_probs_val <- predict(knn_fit, newdata = knn_val_data, type = "prob")[,2]
 
-opts = r$tune(train_reco, opts = list(dim = c(10, 20, 30), 
-              lrate = c(0.1, 0.2), costp_l1 = 0, costq_l1 = 0,
-              nthread = 1, niter = 10))
+#clean up
+rm(knn_data,knn_val_data)
 
-r$train(train_reco, opts = c(opts$min, nthread = 1, niter = 10))
+#new random forest predictions
+rf_probs_val <- predict(rf_fit, newdata = final_val_data, type = "prob")[,2]
 
-cat("Test RMSE from matrix factorization model:\n")
-RMSE(r$predict(test_reco, out_memory()),test$rating)
+#### ROC AND AUC CALCULATIONS ####
+
+#define TPR function for validation set
+calcTPR_val <- function(probs, cutoff){
+  #generate predictions
+  predictions <- factor(probs >= cutoff, levels = c("FALSE","TRUE"))
+  #produce confusion matrix
+  cm <- confusionMatrix(predictions, reference = final_val_data$Euthanized, positive = "TRUE")
+  #measure true positive rate
+  TPR <- cm$table[2,2]/(cm$table[2,2] + cm$table[1,2])
+  #print TPR
+  TPR
+}
+
+#define FPR function for validation set
+calcFPR_val <- function(probs, cutoff){
+  #generate predictions
+  predictions <- factor(probs >= cutoff, levels = c("FALSE","TRUE"))
+  #produce confusion matrix
+  cm <- confusionMatrix(predictions, reference = final_val_data$Euthanized, positive = "TRUE")
+  #measure true positive rate
+  FPR <- cm$table[2,1]/(cm$table[2,1] + cm$table[1,1])
+  #print TPR
+  FPR
+}
+
+#define cutoffs
+cutoffs <- seq(0,1,0.01)
+
+#logit ROC and AUC on validation set
+ROC_glm_val <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+for(i in 1:length(cutoffs)){
+  ROC_glm_val[i,1] <- cutoffs[i]
+  ROC_glm_val[i,2] <- calcTPR_val(glm_probs_val,cutoffs[i])
+  ROC_glm_val[i,3] <- calcFPR_val(glm_probs_val,cutoffs[i])
+}
+
+auc_glm_val <- integrate(approxfun(x = ROC_glm_val$FPR, y = ROC_glm_val$TPR, ties = mean), min(ROC_glm_val$FPR), max(ROC_glm_val$FPR),subdivisions = 2000)$value
+
+#knn ROC and AUC on validation set
+ROC_knn_val <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+for(i in 1:length(cutoffs)){
+  ROC_knn_val[i,1] <- cutoffs[i]
+  ROC_knn_val[i,2] <- calcTPR_val(knn_probs_val,cutoffs[i])
+  ROC_knn_val[i,3] <- calcFPR_val(knn_probs_val,cutoffs[i])
+}
+
+auc_knn_val <- integrate(approxfun(x = ROC_knn_val$FPR, y = ROC_knn_val$TPR, ties = mean), min(ROC_knn_val$FPR), max(ROC_knn_val$FPR),subdivisions = 2000)$value
+
+#random forest ROC and AUC on validation set
+ROC_rf_val <- data.frame(Cutoff = numeric(length = length(cutoffs)), TPR = numeric(length = length(cutoffs)), FPR = numeric(length = length(cutoffs)))
+for(i in 1:length(cutoffs)){
+  ROC_rf_val[i,1] <- cutoffs[i]
+  ROC_rf_val[i,2] <- calcTPR_val(rf_probs_val,cutoffs[i])
+  ROC_rf_val[i,3] <- calcFPR_val(rf_probs_val,cutoffs[i])
+}
+
+auc_rf_val <- integrate(approxfun(x = ROC_rf_val$FPR, y = ROC_rf_val$TPR, ties = mean), min(ROC_rf_val$FPR), max(ROC_rf_val$FPR),subdivisions = 2000)$value
+
+#combine all training ROC data
+all_ROCs_val <- rbind(mutate(ROC_glm_val,Method = rep("GLM",101)), 
+                        mutate(ROC_knn_val,Method = rep("KNN",101)), 
+                        mutate(ROC_rf_val, Method = rep("RandomForest",101)))
+
+#plot all training ROCs together
+allplot <- all_ROCs_val %>% ggplot(aes(x = FPR, y = TPR, col = Method)) + 
+  geom_line(size=1) + geom_abline(intercept = 0, slope = 1, col = "gray") + 
+  scale_x_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  scale_y_continuous(limits=c(0, 1), expand = c(0, 0)) + 
+  theme_minimal() + xlab("False Positive Rate") + 
+  ylab("True Positive Rate") + ggtitle("Validation ROC Curves")
+
+print(allplot)
+rm(allplot)
+
+#print all AUCs
+data.frame(Model = c("Logistic Regression","K Nearest Neighbors","Random Forest"), Validation_AUC = c(auc_glm_val,auc_knn_val,auc_rf_val)) %>% arrange(-Validation_AUC)
 ```
 
-This was the lowest RMSE of any model attempted so far, so it was added to our results table:
 
-```{r results update 7, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Matrix Factorization",RMSE = RMSE(r$predict(test_reco, out_memory()),test$rating)))
-rmse_results
-```
+## Conclusions
 
-### Model Comparison and Further Adjustment
+In the end, we were able to use a random forest model to identify animals that are at highest risk of euthanization with reasonable accuracy. The real-world implications of the final ROC curve would be how much false positive tolerance the clinic has, and this would most likely come down to budget. For example, if they are able to tolerate 25% false positives, meaning they'd be devoting that much budget to supplying extra attention to animals who were likely to be adopted anyway, then they would be able to correctly identify approximately 65% of the animals that are accurately at risk, and they'll ideally be able to prevent some of their deaths.
 
-The distributions of the residuals left by the final linear model and the matrix factorization model were then compared:
-
-```{r model residuals comparison, echo = FALSE, fig.height = 4}
-preds_matfact <- r$predict(test_reco, out_memory())
-
-preds_linear <- overall_ave + test_plus_features$movie_effect + test_plus_features$pen_adj_user_effect + test_plus_features$movie_ct_effect + test_plus_features$user_genre_movie_effect
-
-data.frame(test$rating,preds_linear,preds_matfact) %>% mutate(resids_linear = test.rating - preds_linear, resids_matfact = test.rating - preds_matfact) %>% gather(resids_linear, resids_matfact, key = "model", value = "resid") %>% select(model, resid) %>% ggplot(aes(x=resid,col=model,fill=model)) + geom_density(alpha=0.2) + xlim(-3,3)
-```
-
-Clearly the distribution was wider for the linear model than the matrix factorization model, which was expected since the RMSE is higher. One unexpected finding, however, was that both distributions were right-shifted. With their centers slightly above zero, this meant that both models were underestimating the actual ratings. To see if a final adjustment could be made to account for this, the training data residual distributions were first plotted in order to confirm the trend existed there as well:
-
-```{r training residual distributions, echo = FALSE, fig.height = 4}
-train_plus_features <- train_plus_features %>% left_join(user_genre_effects, by = "userId")
-
-train_plus_features[is.na(train_plus_features)] <- 0
-
-resids_linear_train <- train_plus_features %>% mutate(user_genre_movie_effect = Action.x*Action.y + Adventure.x*Adventure.y + Animation.x*Animation.y + Children.x*Children.y + Comedy.x*Comedy.y + Crime.x*Crime.y + Drama.x*Drama.y + Fantasy.x*Fantasy.y + Horror.x*Horror.y + Musical.x*Musical.y + Mystery.x*Mystery.y + Romance.x*Romance.y + SciFi.x*SciFi.y + Thriller.x*Thriller.y + War.x*War.y + Western.x*Western.y, resids_linear_train = rating - overall_ave - movie_effect - pen_adj_user_effect - movie_ct_effect -user_genre_movie_effect) %>% select(resids_linear_train)
-
-resids_matfact_train <- train$rating - r$predict(train_reco, out_memory())
-
-data.frame(resids_linear_train,resids_matfact_train) %>% gather(key = "model", value = "resid") %>% select(model, resid) %>% ggplot(aes(x=resid,col=model,fill=model)) + geom_density(alpha=0.2) + xlim(-3,3)
-```
-
-And the same effect was indeed observed. While the reason for the shift was not investigated, it was hypothesized that the test RMSE could be further reduced by adding the average training data residual to each of the test predictions:
-
-```{r adjusted matrix fact preds, echo = FALSE}
-cat("Mean residual from matrix fact predictions on training data:\n")
-mean(resids_matfact_train)
-
-cat("Test RMSE from adjusted matrix factorization model:\n")
-RMSE(r$predict(test_reco, out_memory())+mean(resids_matfact_train),test$rating)
-```
-
-This led to further reduction of the RMSE as expected, so this model, which was the final optimized model in this study, was added to the results table:
-
-```{r results update 8, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Residual-Adjusted Matrix Factorization",RMSE = RMSE(r$predict(test_reco, out_memory())+mean(resids_matfact_train),test$rating)))
-rmse_results
-```
-
-## Results on Validation Data
-
-The final test was to take the optimal model, which was the residual-adjusted matrix factorization model, train it on the full edX data set, and test it on the validation set, which up to this point had not been used at all for training or testing of any attempted models. The code to run this model and the RMSE produced by this evaluation is shown below:
-
-```{r final validation, echo = TRUE}
-#format edx data for reco package
-edx_reco <- data_memory(user_index = edx$userId, item_index = edx$movieId, 
-                        rating = edx$rating, index1 = TRUE)
-
-#format validation data for reco package
-validation_reco <- data_memory(user_index = validation$userId, 
-                               item_index = validation$movieId, 
-                               rating = validation$rating, index1 = TRUE)
-
-#initialize reco object
-r = Reco()
-
-#set tuning parameters
-opts = r$tune(edx_reco, opts = list(dim = c(10, 20, 30), 
-              lrate = c(0.1, 0.2), costp_l1 = 0, costq_l1 = 0,
-              nthread = 1, niter = 10))
-
-#train the model
-r$train(edx_reco, opts = c(opts$min, nthread = 1, niter = 10))
-
-#calculate predictions and RMSE
-cat("Validation RMSE from matrix factorization model:\n")
-RMSE(r$predict(validation_reco, out_memory()),validation$rating)
-
-#calculate residuals
-resids_matfact_edx <- edx$rating - r$predict(edx_reco, out_memory())
-
-#add residual mean to predictions for final model improvement
-cat("Mean residual from matrix fact predictions on edx data:\n")
-mean(resids_matfact_edx)
-
-cat("Validation RMSE from adjusted matrix factorization model:\n")
-RMSE(r$predict(validation_reco, out_memory())+mean(resids_matfact_edx),validation$rating)
-```
-
-As shown, the RMSE held up on the validation data, even came in slightly lower than on the test data set, providing confidence that useful model had been fit that can be used to predict movie ratings with a reasonable level of accuracy.
-
-## Conclusions and Further Recommendations
-
-While the models produced here were an excellent first pass, there are likely still improvements that can be made. For the linear model, temporal effects could be explored more closely, as it has been reported that these have been useful in other recommendation systems. The user-specific genre effects could also be better tuned. Lasso is only one of several regularization methods available, and clearly the version chosen left some users with worse RMSEs than they started with, so perhaps cut-offs could be established that determine which users are suitable candidates for calculating genre effects.
-
-The use of the two models themselves could also be more carefully applied. Although not shown here, it was found that the linear model actually made better predictions than matrix factorization for almost 40% of the test observations. No obvious conditions that led to these situations were apparent based on graphing the model results against various features - they seemed to be distributed evenly throughout the data set. However, random forests may be useful in splitting the data to identify non-obvious groups that would benefit from one model over another and produce better results by combining the two models in an ensemble rather than only using the adjusted matrix factorization model on all data points.
-
-Lastly, one method that has been shown to be successful in other recommendation algorithms but was not attempted at all here is collaborative filtering, in which a user is ranked in proximity against similar users, and movies against similar movies, and predictions are made solely based on the similarities between those groupings. This may lead to RMSE improvements when combined with or used instead of the linear and matrix factorization models demonstrated here.
+Assuming 25% false positive rate is too high (after all, they see thousands of animals per year), there are several improvements that could be made here. First, there were clear interaction effects that were not explored. We eliminated some of them by separating out the sex and fixed statuses. It's possible that particular color and breed combinations may be predictive as well, or breeds and age. Secondly, the categories and thresholds around which the months and breeds were aggregated have a lot of flexibility, and no model tuning was done while varying these. Thirdly, better validation techniques could be performed on the training data such as k-fold cross-validation or leave-one-out cross-validation. Finally, other classification models could be explored, such as support vector machines or neural networks. Overall, the models presented here serve as a great starting point to help the clinic start identifying at risk animals, and through some of the methods described here, along with additional data collection, they can only improve.
