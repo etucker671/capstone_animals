@@ -13,6 +13,8 @@ ages$unit_orig <- str_extract(data$AgeuponOutcome, "[a-z]+")
 #Check which units exist
 table(ages$unit_orig)
 
+unique(na.omit(ages$unit_orig))
+
 #remove "s" to consolidate units
 ages$unit_new <- str_remove(ages$unit_orig,"s")
 

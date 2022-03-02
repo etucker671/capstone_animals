@@ -6,26 +6,12 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(message = FALSE, warning = FALSE)
-```
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, echo = FALSE)
 
-## Introduction
+#define project libraries
+package.names <- c("tidyverse","lubridate","randomForest","caret")
 
-Recommendation systems are growing in popularity as personalized consumer experiences are becoming common, even expected, across industries from retail to media, even food & beverage and education. The general idea is to use available information about a user's past behavior, the behavior of other users, and the items of interest to recommend a set of new items that the user may find interesting.
-
-In this project, a recommendation algorithm for movies was built using the 10M MovieLens dataset, which contains 10,000,054 movie ratings on a scale of 1-5 stars for 69,878 users rating 10,677 movies. The data set not only contains the user/movie ID pairs and the rating, but also the timestamp of the rating, the title of the movie, and the genres in which the movie is categorized.
-
-Models were built, or expanded, based on various components of the data, and several common machine learning methods were attempted, using root mean squared-error (RMSE) to evaluate their effectiveness. (RMSE can be thought of as the average number of "stars" away from the actual values our predictions were.) The goal of each of these attempts was to drive the RMSE on a test data set -- a set of ratings that the trained model had previously not observed -- as close to zero as possible.
-
-The methods for data setup, exploration, and analysis are explained here, and the RMSEs generated from the resulting models are reproduced.
-
-## Data Cleaning & Exploration
-
-### Setup
-
-Before manipulating any data, the libraries necessary for this project were first loaded, which included tidyverse, caret, data.table, lubridate, gridExtra, glmnet, and recosystem.
-
-```{r libraries, include = FALSE}
+#define check function
 package.check <- function(package.names){
   for(i in 1:length(package.names)){
     if(package.names[i] %in% installed.packages()){
@@ -33,7 +19,7 @@ package.check <- function(package.names){
       cat(package.names[i],"already installed. Library reloaded.\n")
     }
     else{
-      install.packages(package.names[i], character.only = TRUE, repos="http://cran.us.r-project.org")
+      install.packages(package.names[i], character.only = TRUE)
       library(package.names[i], character.only = TRUE)
       cat("Missing package",package.names[i],"has been installed.\n")
     }
@@ -41,159 +27,153 @@ package.check <- function(package.names){
   cat("All requested libraries have been loaded.\n")
 }
 
-package.check(c("tidyverse","caret","data.table","lubridate","gridExtra","glmnet","recosystem","dplyr"))
+#run check function on libraries
+package.check(package.names)
 ```
 
-The data was then downloaded and split into an "edx" set, containing 90% of the data for model creation, and a "validation" set, containing 10% of the data for final RMSE evaluation. The edx data set was then further split into a "test" and "training" set to help train the models before conducting training and validation against the full data set. These data sets are summarized in the tables below: 
+## Introduction
 
-```{r data setup, echo = FALSE}
-#download data file
-dl <- tempfile()
-download.file("http://files.grouplens.org/datasets/movielens/ml-10m.zip", dl)
+Every year, approximately 1.5 million animals are euthanized in shelters across the United States. Some of these deaths may be preventable by identifying particularly at risk animals and allowing shelters to focus their budgets towards additional medical procedures, marketing, or play time with potential owners. Austin Animal Center recently released 3 years worth of intake and outcome data on its animals in hopes of doing just this. Here we analyzed these data in an attempt to model the likelihood of euthanization for any incoming animal so that funds can be allocated appropriately and unneccesary deaths can be avoided.
 
-#pull ratings records
-ratings <- fread(text = gsub("::", "\t", readLines(unzip(dl, "ml-10M100K/ratings.dat"))),
-           col.names = c("userId", "movieId", "rating", "timestamp"))
 
-#pull movie info
-movies <- str_split_fixed(readLines(unzip(dl, "ml-10M100K/movies.dat")), "\\::", 3)
-colnames(movies) <- c("movieId", "title", "genres")
+## Data Cleaning, Exploration, and Feature Transformation
 
-#create data frame of movie info
-if(version$major >= 4) {
-  movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(movieId),
-            title = as.character(title), genres = as.character(genres))
-} else {
-  movies <- as.data.frame(movies) %>% mutate(movieId = as.numeric(levels(movieId))[movieId],
-            title = as.character(title), genres = as.character(genres))
-}
+The data was first downloaded and imported from its raw CSV format, the first 10 rows of which are shown below. On each animal, we were provided with several predictors including age, sex, spayed/neutered status, breed, color, outcome, outcome subtype, and the date and time of the outcome.
 
-#join movie and ratings tables
-movielens <- left_join(ratings, movies, by = "movieId")
-  
-#create validation set as 10% of MovieLens data
+```{r a}
+data <- read.csv(url("https://raw.githubusercontent.com/etucker671/capstone_animals/main/animaloutcomes.csv"), header = TRUE)
+
+data %>% head(n=10)
+```
+
+The outcome subtype was ignored, as this information is not provided until the outcome is determined, so it could not be used as a predictor. Prior to splitting the data set into a training and validation set, the original outcomes, shown in the table below, were condensed into a binary outcome (Euthanized or Not Euthanized), also shown below.
+
+```{r b}
+#print original outcomes
+cat("\nOriginal Outcomes:\n")
+data$OutcomeType %>% table()
+
+#binarize outcomes
+data <- data %>% mutate(Euthanized = OutcomeType == "Euthanasia")
+
+#print new outcomes
+cat("\nBinary Outcomes:\n")
+data$Euthanized %>% table()
+```
+
+This transformation simplied the classification problem and ensured that similar ratios of euthanized vs. non-euthanized pets would be split into the validation and training sets. Once transformed, the data was then split into training and validation sets at an 80:20 ratio.
+
+```{r c}
+#split data
 if(version$year >= 2019) {
   set.seed(1, sample.kind="Rounding")
 } else {
   set.seed(1)
 }
-test_index <- createDataPartition(y = movielens$rating, times = 1, p = 0.1, list = FALSE)
-edx <- movielens[-test_index,]
-temp <- movielens[test_index,]
+index <- createDataPartition(data$Euthanized, p = 0.8, list = FALSE)
+full_data <- data
+data <- full_data[index,]
+val_data <- full_data[-index,]
 
-#make sure userId and movieId in validation set are also in edx set
-validation <- temp %>% 
-  semi_join(edx, by = "movieId") %>%
-  semi_join(edx, by = "userId")
-
-#add rows removed from validation set back into edx set
-removed <- anti_join(temp, validation)
-edx <- rbind(edx, removed)
-
-#clean up environment
-rm(dl, ratings, movies, test_index, temp, movielens, removed)
-
-#partition edx into test and training sets
-if(version$year >= 2019) {
-  set.seed(123, sample.kind="Rounding")
-} else {
-  set.seed(123)
-}
-test_index <- createDataPartition(y = edx$rating, times = 1, p = 0.1, list = FALSE)
-train <- edx[-test_index,]
-temp <- edx[test_index,]
-
-#make sure userId and movieId in test set are also in training set
-test <- temp %>% 
-  semi_join(train, by = "movieId") %>%
-  semi_join(train, by = "userId")
-
-#add rows removed from test set back into train set
-removed <- anti_join(temp, test)
-train <- rbind(train, removed)
-
-#clean up environment
-rm(removed,temp,test_index)
-
-#present data summaries
-cat("Validation data set:\n")
-summary(validation)
-cat("edX data set:\n")
-summary(edx)
-cat("Training data set (subset of edX):\n")
-summary(train)
-cat("Test data set (subset of edX):\n")
-summary(test)
+#clean up
+rm(index)
 ```
 
-The RMSE function that would be used for evaluation was also defined up front using the following code:
 
-```{r define RMSE}
-RMSE <- function(predictions, reference){
-  sqrt(mean((reference - predictions)^2))
-}
+We treated the validation data as if it were future observations on which predictions need to be made, and so all data exploration was carried out on only the training data set. However, any cleaning and transformations carried out as a result of the exploratory findings were applied to both data sets in parallel.
+
+
+### Age Effects
+
+First, we looked at age effects. Before being able to assess these, however, we had to standardize the entries, as they were reported as character strings such as:
+```{r e}
+data$AgeuponOutcome %>% head()
 ```
 
-### Baseline Model
+and in a variety of units, including:
 
-The simplest model, other than randomly guessing a rating, was to pick a constant rating value and use it for every prediction. The constant value that will minimize RMSE is the average rating across all data points, as this value will create the minimum cumulative distance between it and each point in the set. The average was calculated and run as a model through the RMSE function, and the outputs were assigned to the first row of a results table that was used throughout the model building process. The resulting table is shown below:
+```{r e}
+#create conversion dataframe
+ages <- data.frame(matrix(ncol = 4, nrow = nrow(data)))
+x <- c("number", "unit_orig", "unit_new", "age_years")
+colnames(ages) <- x
+rm(x)
 
-```{r average only model, echo = FALSE}
-#calculate the average
-overall_ave <- mean(edx$rating)
+#Extract numbers
+ages$number <- as.numeric(str_extract(data$AgeuponOutcome, "\\d+"))
 
-#evaluate it as a model
-cat("RMSE =",RMSE(overall_ave,test$rating),"\n")
+#Extract units
+ages$unit_orig <- str_extract(data$AgeuponOutcome, "[a-z]+")
 
-#assign result to results table
-options(pillar.sigfig=6)
-rmse_results <- tibble(Method = "Average Only", RMSE = RMSE(overall_ave,test$rating))
-rmse_results
+#Check which units exist
+unique(na.omit(ages$unit_orig)) %>% sort()
 ```
 
-As shown, the "average only" method produces an RMSE of 1.06 on the test data. The goal of the rest of the analysis was to drive the RMSE as far below this starting point as possible.
 
-### Movie and User Effects
+The numbers were extracted from the strings, and the "s" was removed from all plural entries to convert everything to singular units. The extracted numbers were then divided by an appropriate conversion factor to convert everything into years. (Month values were divided by 12, weeks divided by 52, and days divided by 365.) A new feature, AgeInYears, was then created to store these values, the distribution of which is shown below.
 
-Based on experience, it could be assumed movies in the set were more well-liked than others, and likely that some users were more critical of movies in general than others. The existence of this variability was confirmed by inspecting the distribution of the average rating each movie received as well as the distribution of each users' average rating given, both shown below:
+```{r f}
+#remove "s" to consolidate units
+ages$unit_new <- str_remove(ages$unit_orig,"s")
 
-```{r mean rating hists, echo = FALSE, fig.height = 3}
-user_averages <- edx %>% group_by(userId) %>% summarize(user_mean_rating = mean(rating)) %>% ggplot(aes(x=user_mean_rating)) + geom_histogram(fill="darkslategrey",col="black")
+#Produce all values in years
+ages <- ages %>% mutate(age_years = ifelse(unit_new == "day", number/365, ifelse(unit_new == "month", number/12, ifelse(unit_new == "week", number/52,number))))
 
-movie_averages <- edx %>% group_by(movieId) %>% summarize(movie_mean_rating = mean(rating)) %>% ggplot(aes(x=movie_mean_rating)) + geom_histogram(fill="darkslategrey",col="black")
+#merge into data
+data <- cbind(data,AgeInYears = ages$age_years)
 
-grid.arrange(user_averages,movie_averages,ncol=2)
-rm(user_averages,movie_averages)
+#clean up
+rm(ages)
+
+#create conversion dataframe
+ages <- data.frame(matrix(ncol = 4, nrow = nrow(val_data)))
+x <- c("number", "unit_orig", "unit_new", "age_years")
+colnames(ages) <- x
+rm(x)
+
+#Extract numbers
+ages$number <- as.numeric(str_extract(val_data$AgeuponOutcome, "\\d+"))
+
+#Extract units
+ages$unit_orig <- str_extract(val_data$AgeuponOutcome, "[a-z]+")
+
+#Check which units exist
+table(ages$unit_orig)
+
+#remove "s" to consolidate units
+ages$unit_new <- str_remove(ages$unit_orig,"s")
+
+#Check new units
+table(ages$unit_new)
+
+#Produce all values in years
+ages <- ages %>% mutate(age_years = ifelse(unit_new == "day", number/365, ifelse(unit_new == "month", number/12, ifelse(unit_new == "week", number/52,number))))
+
+#merge into data
+val_data <- cbind(val_data,AgeInYears = ages$age_years)
+
+#clean up
+rm(ages)
+
+#print distribution
+hist(data$AgeInYears, xlab = "Age In Years", main = "Distribution of Ages in Training Data")
 ```
 
-The histograms here demonstrate that there is indeed significant variability between movies and between users. This information was used to improve on the "average only" prediction algorithm by incorporating a movie effect, that is the amount the rated movie tended to be rated by users relative to the average, as well as a user effect, that is the amount the user tended to rate movies in general relative to the average. First, these effects were calculated independently and the impact of incorporating the effects into the predictions was tested. Resulting RMSEs are shown below:
 
-```{r user and movie effects, echo = FALSE}
-#calculate effects
-user_effects <- train %>% group_by(userId) %>%
-  summarize(user_effect = mean(rating - overall_ave))
+We then looked to see if there were age differences between euthanized and non-euthanized animals, and we indeed found some, with statistical significance confirmed by t-test as shown below.
 
-movie_effects <- train %>% group_by(movieId) %>%
-  summarize(movie_effect = mean(rating - overall_ave))
-
-#check effects on RMSE:
-#user effect only
-temp <- left_join(test,user_effects,by = "userId")
-preds <- overall_ave + temp$user_effect
-cat("RMSE =",RMSE(preds,test$rating),"when user effects alone are added to the average.\n")
-
-#movie effect only
-temp <- left_join(test,movie_effects,by = "movieId")
-preds <- overall_ave + temp$movie_effect
-cat("RMSE =",RMSE(preds,test$rating),"when movie effects alone are added to the average.\n")
-
-#combined
-temp <- test %>% left_join(movie_effects, by = "movieId") %>% left_join(user_effects, by = "userId")
-preds <- overall_ave + temp$movie_effect + temp$user_effect
-cat("RMSE =",RMSE(preds,test$rating),"when movie effects and user effects are both added to the average.\n")
+```{r g}
+#t test for statistical age difference between euthanized and non-euthanized groups
+t.test(pull(filter(data, Euthanized == TRUE),AgeInYears),pull(filter(data, Euthanized == FALSE),AgeInYears))
+```
+```{r h}
+#age distributions of euthanized vs. not
+data %>% ggplot(aes(x = Euthanized, y = AgeInYears)) + geom_boxplot()
 ```
 
-As shown, the user effect had a stronger impact on RMSE than the movie effect alone, but combined, the RMSE was reduced even further. All these findings were significant and so were added to the results table, the updated version of which is shown below:
+Given these findings, we kept age as a feature to carry forward into modeling attempts.
+
+
 
 ```{r results update 1, echo = FALSE}
 rmse_results <- rbind(rmse_results,tibble(Method = "Ave + User Effects",RMSE = RMSE(overall_ave + temp$user_effect,test$rating)))
@@ -202,7 +182,8 @@ rmse_results <- rbind(rmse_results,tibble(Method = "Ave + User FX + Movie FX",RM
 rmse_results
 ```
 
-### Effect Adjustments
+
+### Animal Type Effects
 
 Adding effects is only maximally useful when those effects are uncorrelated, and it was suspected that a correlation might exist between user and movie effects, for example, if a particularly negative reviewer just watches movies that are particularly poorly rated, or any combination of situations like this. To test for this, the correlation was measured directly as shown below:
 
