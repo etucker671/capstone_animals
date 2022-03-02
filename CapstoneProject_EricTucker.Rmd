@@ -163,86 +163,190 @@ hist(data$AgeInYears, xlab = "Age In Years", main = "Distribution of Ages in Tra
 We then looked to see if there were age differences between euthanized and non-euthanized animals, and we indeed found some, with statistical significance confirmed by t-test as shown below.
 
 ```{r g}
+#age distributions of euthanized vs. not
+data %>% ggplot(aes(x = Euthanized, y = AgeInYears)) + geom_boxplot()
+
 #t test for statistical age difference between euthanized and non-euthanized groups
 t.test(pull(filter(data, Euthanized == TRUE),AgeInYears),pull(filter(data, Euthanized == FALSE),AgeInYears))
 ```
-```{r h}
-#age distributions of euthanized vs. not
-data %>% ggplot(aes(x = Euthanized, y = AgeInYears)) + geom_boxplot()
-```
 
-Given these findings, we kept age as a feature to carry forward into modeling attempts.
-
-
-
-```{r results update 1, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + User Effects",RMSE = RMSE(overall_ave + temp$user_effect,test$rating)))
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + Movie Effects",RMSE = RMSE(overall_ave + temp$movie_effect,test$rating)))
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + User FX + Movie FX",RMSE = RMSE(overall_ave + temp$user_effect + temp$movie_effect,test$rating)))
-rmse_results
-```
+Given these findings, we kept AgeInYears as a feature to carry forward into modeling attempts.
 
 
 ### Animal Type Effects
 
-Adding effects is only maximally useful when those effects are uncorrelated, and it was suspected that a correlation might exist between user and movie effects, for example, if a particularly negative reviewer just watches movies that are particularly poorly rated, or any combination of situations like this. To test for this, the correlation was measured directly as shown below:
+There were only two types of animals in this data set: Dogs and Cats. We checked to see if there was any difference in euthanization rates between them, and indeed found there was a small but significant difference, as confirmed by a Chi Squared test (shown below), where cats were euthanized slightly more frequently than dogs (6.4% vs 5.4%). AnimalType was therefore carried forward into the models.
 
-```{r correlation test}
-cor.test(temp$user_effect,temp$movie_effect)
+```{r h}
+#euthanization rates by animal type
+data %>% group_by(AnimalType) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
+
+#animal type
+chisq.test(data$AnimalType,data$Euthanized)
 ```
 
-And it was found that a small but significant correlation did exist. To try and drive this down, each effect was re-evaluated after removing the other effect using the following formula:
 
-  Effect = Rating - Overall Average - Other Effect 
+### Sex and Fixed Status Effects
 
-And the RMSE was re-tested in each case. First the movie effects were redefined to be independent of the user effects. The resulting RMSE and remaining correlation are shown below:
+The sex information was provided as string, combined with the spayed/neutered status of each animal. Each combination is shown below along with the euthanization proportions observed in the training set, ordered by most frequently to least frequently euthanized.
 
-```{r adjusted movie effects, echo = FALSE}
-adj_movie_effects <- train %>% left_join(user_effects, by='userId') %>%
-  group_by(movieId) %>% summarize(movie_effect = mean(rating - overall_ave - user_effect))
-temp <- test %>% left_join(adj_movie_effects, by = "movieId") %>% left_join(user_effects, by = "userId")
-preds <- overall_ave + temp$movie_effect + temp$user_effect
-cat("RMSE =",RMSE(preds,test$rating),"\n")
-cor.test(temp$user_effect,temp$movie_effect)
+```{r i}
+#euthanization rates by SexUponOutcome
+data %>% group_by(SexuponOutcome) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
 ```
 
-Indeed both the RMSE and the correlation coefficient were reduced. These results were added to our results table:
+As shown, males are generally more frequently euthanized than females, and "intact" animals are euthanized more than spayed or neutered animals. We separated out these variables with regex extraction, labeling the separate variables as Sex and, though not an flattering term, "Fixed" Status - representing either neutered (if male) or spayed (if female). Chi Squared tests were run to confirm statistical significance of euthanization rates between each variable, the results of which, along with the corresponding rates, are shown below.
 
-```{r results update 2, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + UserFX + Adj_MovieFX",RMSE = RMSE(preds,test$rating)))
-rmse_results
+```{r i}
+#extract sex and spay/neuter status
+temp <- separate(data[7], col = "SexuponOutcome", into = c("FixedStatus","Sex"), sep = " ")
+
+#reassign spayed/neutered status to general value
+temp[temp$FixedStatus=="Spayed",1] <- "Spayed-Neutered"
+temp[temp$FixedStatus=="Neutered",1] <- "Spayed-Neutered"
+
+#convert blanks to Unknown
+temp[temp$FixedStatus=="",1] <- "Unknown"
+temp[is.na(temp$Sex),2] <- "Unknown"
+
+#convert to factors
+temp$FixedStatus <- factor(temp$FixedStatus, levels = c("Spayed-Neutered", "Intact", "Unknown"))
+temp$Sex <- factor(temp$Sex)
+
+#add to data set
+data <- cbind(data,temp)
+
+#clean up
+rm(temp)
+
+
+#### REPEAT FOR VALIDATION SET ####
+
+#extract sex and spay/neuter status
+temp <- separate(val_data[7], col = "SexuponOutcome", into = c("FixedStatus","Sex"), sep = " ")
+
+#reassign spayed/neutered status to general value
+temp[temp$FixedStatus=="Spayed",1] <- "Spayed-Neutered"
+temp[temp$FixedStatus=="Neutered",1] <- "Spayed-Neutered"
+
+#convert blanks to Unknown
+temp[temp$FixedStatus=="",1] <- "Unknown"
+temp[is.na(temp$Sex),2] <- "Unknown"
+
+#convert to factors
+temp$FixedStatus <- factor(temp$FixedStatus, levels = c("Spayed-Neutered", "Intact", "Unknown"))
+temp$Sex <- factor(temp$Sex)
+
+#add to data set
+val_data <- cbind(val_data,temp)
+
+#clean up
+rm(temp)
+
+#euthanization rates by sex
+data %>% group_by(Sex) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
+
+#sex chisq
+chisq.test(data$Sex,data$Euthanized)
+
+#euthanization rates by fixed status
+data %>% group_by(FixedStatus) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop)
+
+#fixed status chisq
+chisq.test(data$FixedStatus,data$Euthanized)
+
 ```
 
-Then the user effects were redefined to be independent of the movie effects:
+Through this separation, we saw that unknown sex animals were most likely to be euthanized, followed by males, followed by females (a slightly different order than when viewing the combined variables). The FixedStatus variable followed the same trends as previously observed. Both of these variables were carried forward into the models.
 
-```{r adjusted user effects, echo = FALSE}
-adj_user_effects <- train %>% left_join(movie_effects, by='movieId') %>%
-  group_by(userId) %>% summarize(user_effect = mean(rating - overall_ave - movie_effect))
-temp <- test %>% left_join(adj_user_effects, by = "userId") %>% left_join(movie_effects, by = "movieId")
-preds <- overall_ave + temp$movie_effect + temp$user_effect
-cat("RMSE =",RMSE(preds,test$rating),"\n")
-cor.test(temp$user_effect,temp$movie_effect)
+
+### Seasonal Effects
+
+We reasoned that shelters would be likely to experience variability in both intake and adoption rates throughout the year, so we looked for any seasonal effects on euthanization rates. The exact meaning of the DateTime variable was not made clear by the publishers, so it could either correspond to the intake time or the outcome time. In either case, it was interpreted as an approximate activity time during which an animal was present in the shelter and would arrive at some outcome. We extracted the month from each timestamp and viewed euthanization rates for each, shown below.
+
+```{r j}
+#extract month
+data <- data %>% mutate(Month = month(DateTime, label = TRUE))
+#remove ordering
+data$Month <- factor(data$Month, ordered = FALSE)
+
+#### REPEAT FOR VALIDATION DATA ####
+
+#extract month
+val_data <- val_data %>% mutate(Month = month(DateTime, label = TRUE))
+#remove ordering
+val_data$Month <- factor(val_data$Month, ordered = FALSE)
+
+#euth_prop plotted
+data %>% group_by(Month) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% ggplot(aes(x = Month, y = euth_prop)) + geom_point() + geom_line(aes(group=1), col = "red") + ylab("Proportion of Animals Euthanized")
+
 ```
 
-This had a much stronger impact, reducing RMSE significantly and dropping the correlation down to a tenth of what it was before, though still significant. These results were added to the results table:
+It appeared that euthanization rates spiked in the Spring (March through June). To get a clearer picture of what was happening, we looked at both euthanization and adoption counts by month, and saw that they both followed similar but not identical trends (shown below), generally dropping in Winter and Spring but rising in the Fall.
 
-```{r results update 3, echo = FALSE}
-rmse_results <- rbind(rmse_results,tibble(Method = "Ave + MovieFX + Adj_UserFX",RMSE = RMSE(preds,test$rating)))
-rmse_results
+```{r k}
+#plotted adoptions by month
+data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% ggplot(aes(x = Month, y = Adoptions)) + geom_point() + geom_line(aes(group=1), col = "blue")
+
+#plotted euthanizations by month
+data %>% group_by(Month) %>% summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% ggplot(aes(x = Month, y = Euthanizations)) + geom_point() + geom_line(aes(group=1), col = "red")
+
 ```
 
-The increased significance of the user effect adjustment over the movie effect adjustment observed here was likely related to the fact that user effects appear to have a bigger overall impact on the predicted rating than movie effects, so performing the adjustment on the user effect, even if equal in relation to the predictor itself, would impact the predictions more strongly.
 
-Although not expected to be helpful, both adjusted effects were then combined to see what would happen:
+Given the differences in scale for adoptions vs. euthanizations by month, we instead compared them by plotting as percentage deviations from their respective averages (shown below), and we were able to show that although euthanization counts dropped below average in the months of March and April, they did not drop nearly as much as the adoptions, and so the chances of an animal getting euthanized during those months was indeed higher. In April and May, the euthanization counts actually increased above average, while the adoption counts fell below. Collectively, these months were labeled as "Danger Months", and we coded a matching binary variable set to a new feature called "Month Status", the two statuses being "Danger" or "Neutral". In an effort to reduce dimensionality, the MonthStatus variable, not the Month itself, was carried forward into the modeling process.
 
-```{r both effects adjusted, echo = FALSE}
-temp <- test %>% left_join(adj_user_effects, by = "userId") %>% left_join(adj_movie_effects, by = "movieId")
-preds <- overall_ave + temp$movie_effect + temp$user_effect
-cat("RMSE =",RMSE(preds,test$rating),"\n")
-cor.test(temp$user_effect,temp$movie_effect)
+```{r l}
+#plotted as deviations from average
+AveAdoptionsPerMonth <- data %>% group_by(Month) %>% 
+  summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% 
+  pull(Adoptions) %>% mean()
+
+AveEuthanizationsPerMonth <- data %>% group_by(Month) %>% 
+  summarize(Adoptions = sum(OutcomeType == "Adoption"), Euthanizations = sum(OutcomeType == "Euthanasia")) %>% 
+  pull(Euthanizations) %>% mean()
+
+data %>% group_by(Month) %>% 
+  summarize(Adoptions = (sum(OutcomeType == "Adoption")-AveAdoptionsPerMonth)/AveAdoptionsPerMonth, 
+            Euthanizations = (sum(OutcomeType == "Euthanasia")-AveEuthanizationsPerMonth)/AveEuthanizationsPerMonth) %>% 
+  gather(.,key = "Outcome", value = Deviation, 2:3) %>% as.data.frame() %>% 
+  ggplot(aes(x = Month, y = Deviation, col = Outcome)) + geom_point() + 
+  geom_line(aes(group=Outcome)) + scale_color_manual(values=c("blue","red")) + ylab("% Diff from Mean")
+
+rm(AveAdoptionsPerMonth,AveEuthanizationsPerMonth)
+
+#assign danger months
+data <- data %>% mutate(MonthStatus = factor(ifelse(Month=="Mar"|Month=="Apr"|Month=="May"|Month=="Jun","Danger","Neutral"), levels = c("Neutral","Danger")))
+
+val_data <- val_data %>% mutate(MonthStatus = factor(ifelse(Month=="Mar"|Month=="Apr"|Month=="May"|Month=="Jun","Danger","Neutral"), levels = c("Neutral","Danger")))
+
 ```
 
-This increased both the RMSE and the correlation coefficient. This was also tried on the training data set (not shown), and the result was the same. The adjusted values cannot be calculated without taking the other predictor into consideration, so by combining both sets of adjusted values, some recursive operations were probably incorporated that were erasing some the gains from the individual adjustments. Ultimately, the raw movie effects combined with the adjusted user effects led to the best result, so this was carried forward, and the combined adjusted effects were not added to the results table.
+
+### Breed Effects
+
+Determining breed effects was more challenging, as there were 1233 unique breeds listed with much of the variety coming from mixed breed combinations. As an example, 20 randomly selected breeds and the number of animals belonging to them are shown below.
+
+```{r m}
+#20 most common breeds
+data %>% group_by(Breed) %>% summarize(n = n()) %>% filter(n>10) %>% sample_n(.,20)
+```
+
+It turned out there was significant variation in euthanization rates among breeds as well. The 30 most frequently and 30 least frequently euthanized breeds with at least 10 animals per breed are shown below. As shown, some breeds are euthanized far above the average rate, while some have no record of ever being euthanized.
+
+```{r n}
+cat("\nMost Frequently Euthanized Breeds\n")
+#30 most commonly euthanized breeds, filtered by n >= 10
+data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(-euth_prop) %>% filter(n >= 10) %>% print(n=30)
+cat("\nLeast Frequently Euthanized Breeds\n")
+#30 least commonly euthanized breeds, filtered by n >= 10
+data %>% group_by(Breed) %>% summarize(n = n(), euth_prop = mean(Euthanized == TRUE)) %>% arrange(euth_prop) %>% filter(n >= 10) %>% print(n=30)
+```
+
+Again in an attempt to reduce dimensionality, we set out to divide the breeds into "Danger Breeds" (those at high risk of euthanization), "Safe Breeds" (those unlikely to get euthanized), and "Neutral Breeds" (the rest in between). First we, separated any mixed breeds as shown in the table below.
+
+
+
 
 ### Rating Count Effects and Penalizations
 
